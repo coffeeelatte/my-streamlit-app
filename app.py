@@ -8,8 +8,8 @@ client = OpenAI()
 
 # 페이지 설정
 st.set_page_config(page_title="한영 번역기", page_icon="📒")
-st.title("초간단 한영 번역기")
-st.write("간단한 한글을 입력하시면 영어로 번역됩니다.")
+st.title("📒초간단 한영 번역기")
+st.write("한국어을 입력하시면 영어로 번역됩니다.")
 
 # 사용자 입력(텍스트)
 korean_text = st.text_area(
