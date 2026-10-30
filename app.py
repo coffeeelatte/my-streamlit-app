@@ -55,4 +55,4 @@ if st.button("번역하기"):
             st.write(response.output_text)
 
             st.subheader("영어 번역 결과")
-            st.success( "번역이 완료되었습니다."  )
+            st.success( "성공적으로 번역이 완료되었습니다."  )
