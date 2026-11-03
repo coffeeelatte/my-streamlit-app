@@ -1,34 +1,39 @@
 
-import os
 import streamlit as st
-from openai import OpenAI
 
-# OpenAI 클라이언트 생성
-client = OpenAI()
+# 1. 페이지 설정
+st.set_page_config(
+    page_title="나의 서비스",
+    layout="wide"
+)
 
-# 페이지 설정
-st.set_page_config(page_title="AI음성비서 에이블", page_icon="😊")
-st.title("😊 당신의 AI음성비서, 에이블입니다.")
-st.write("대화를 기억하지 않는 단순 챗봇입니다.")
+# 2. 사이드바: 서비스 선택
+st.sidebar.title("서비스 메뉴")
 
-# 사용자 질문
-prompt = st.text_input("질문을 입력하세요")
+service = st.sidebar.radio(
+    "사용할 서비스를 선택하세요",
+    ["홈", "글자 수 세기", "계산기"]
+)
 
-# 질문 버튼
-if st.button("질문하기"):
-  # strip은 양쪽 공백 빼기
-    if prompt.strip() == "":
-        st.warning("질문을 입력하세요")
-    else:
-         # spinner는 동글뱅이 돌어가는거 보여줌
-         with st.spinner("답변 생성 중입니다..."):
-            # LLM 호출
-            response = client.responses.create(
-                model="gpt-4o-mini",
-                input=[{"role": "user", "content": prompt}]
-            )
-            answer = response.output_text
+# 3. 본문: 선택한 서비스에 따라 다른 화면 표시
+if service == "홈":
+    st.title("나의 서비스 모음")
+    st.write("왼쪽 사이드바에서 사용할 서비스를 선택하세요.")
 
-            # 결과 출력
-            st.subheader("AI 답변")
-            st.write(answer)
+elif service == "글자 수 세기":
+    st.title("글자 수 세기")
+
+    text = st.text_area("글을 입력하세요")
+
+    if st.button("글자 수 확인"):
+        st.success(f"공백 포함 총 {len(text)}자입니다.")
+
+elif service == "계산기":
+    st.title("두 수 더하기")
+
+    num1 = st.number_input("첫 번째 숫자", value=0.0)
+    num2 = st.number_input("두 번째 숫자", value=0.0)
+
+    if st.button("계산하기"):
+        result = num1 + num2
+        st.success(f"계산 결과: {result}")
