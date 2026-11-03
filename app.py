@@ -52,29 +52,26 @@ elif service == "멀티턴 챗":
       )
       with st.chat_message("user"):
           st.markdown(user_input)
-
-    # 모델 응답 생성
-    try:
+      
+      # 모델 응답 생성
+      try:
         response = client.responses.create(
             model="gpt-4o-mini",
             input=st.session_state.messages
-        )
+            )
         assistant_reply = response.output_text
-    except Exception as e:
-        assistant_reply = f"오류가 발생했습니다: {e}"
+      except Exception as e:
+          assistant_reply = f"오류가 발생했습니다: {e}"
 
-    # 응답 저장 및 출력
-    st.session_state.messages.append(
-        {"role": "assistant", "content": assistant_reply}
-    )
-    with st.chat_message("assistant"):
-        st.markdown(assistant_reply)
+      # 응답 저장 및 출력
+      st.session_state.messages.append(
+          {"role": "assistant", "content": assistant_reply}
+      )
+      with st.chat_message("assistant"):
+          st.markdown(assistant_reply)
 
 
-    if st.button("글자 수 확인"):
-        st.success(f"공백 포함 총 {len(text)}자입니다.")
 
-        
 
 elif service == "계산기":
     st.title("두 수 더하기")
