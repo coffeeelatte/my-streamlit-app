@@ -8,7 +8,7 @@ client = OpenAI()
 
 # 페이지 설정
 st.set_page_config(page_title="AI음성비서 에이블", page_icon="😊")
-st.title("😊 당신의 AI 음성 비서, 에이블입니다.")
+st.title("😊 당신의 AI음성비서, 에이블입니다.")
 st.write("대화를 기억하지 않는 단순 챗봇입니다.")
 
 # 사용자 질문
