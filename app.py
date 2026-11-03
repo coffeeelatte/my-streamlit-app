@@ -2,7 +2,7 @@
 import streamlit as st
 
 # 1. 페이지 설정
-st.set_page_config((page_title="AI비서 에이블", page_icon="😊"
+st.set_page_config((page_title="AI비서 에이블", page_icon="😊",
     page_title="에이블의 기능들",
     layout="wide"
 )
