@@ -23,9 +23,9 @@ if "messages" not in st.session_state:
                                   "content": "안녕하세요. 무엇을 도와드릴까요?"}]
 
 # 기존 대화 출력
-for message in st.session_state.input_messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+for messages in st.session_state.input_messages:
+    with st.chat_message(messages["role"]):
+        st.markdown(messages["content"])
 
 
 # 사용자 음성 입
