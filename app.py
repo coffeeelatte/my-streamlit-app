@@ -115,5 +115,27 @@ if submit:
         {"role": "assistant", "content": assistant_reply}
     )
 
+    # 답변을 화면에 출력
     with st.chat_message("assistant"):
         st.markdown(assistant_reply)
+
+        # TTS: 답변 텍스트 → 음성
+        with st.spinner("답변을 음성으로 변환하고 있습니다..."):
+            try:
+                speech = client.audio.speech.create(
+                    model="tts-1",
+                    voice="alloy",
+                    input=assistant_reply,
+                    response_format="mp3"
+                )
+
+                # 생성된 음성을 재생
+                st.caption("AI가 생성한 음성입니다.")
+                st.audio(
+                    speech.content,
+                    format="audio/mpeg",
+                    autoplay=True
+                )
+
+            except Exception as e:
+                st.error(f"음성 생성 중 오류가 발생했습니다: {e}")
