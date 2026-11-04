@@ -129,7 +129,7 @@ if submit:
                 audio_bytes = speech.content
                 
                 # 음성 출력
-                st.markdown("### 🔊 AI 음성 재생")
+                st.caption("### 🔊 AI 음성 재생")
                 st.audio(speech.content, format="audio/mp3")
 
             except Exception as e:
