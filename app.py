@@ -37,52 +37,77 @@ with st.form("task_form"):
 
 
 # 버튼을 눌렀을 때만 실행
+# 버튼을 눌렀을 때만 실행
 if submit:
-    # 업로드 된 파일이 있으면 디코딩
-    text = ""
-    if uploaded_file is not None:
-        text = uploaded_file.read().decode("utf-8")
-
-    # 녹음이 없으면 녹음 요청
+    # 1. 녹음 여부 확인
     if audio_value is None:
         st.warning("음성을 녹음해주세요.")
         st.stop()
 
-    # 시스템 메세지
+    # 2. 참고자료 읽기
+    text = ""
+
+    if uploaded_file is not None:
+        try:
+            text = uploaded_file.getvalue().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            st.error("텍스트 파일을 UTF-8 형식으로 저장한 뒤 업로드해주세요.")
+            st.stop()
+
+    # 3. 시스템 메시지 구성
     system_content = sys_role
+
     if text:
         system_content += f"\n\n다음 내용을 참고하세요:\n{text}"
-    input_messages = [{"role": "system", "content": system_content}]
 
-    # STT: 음성 → 텍스트
-    transcript = client.audio.transcriptions.create(
-        model="whisper-1",
-        file=("audio.wav", audio_value, "audio/wav"))
+    # 4. STT: 음성 → 텍스트
+    with st.spinner("음성을 텍스트로 변환하고 있습니다..."):
+        try:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=("audio.wav", audio_value.getvalue(), "audio/wav")
+            )
+            user_text = transcript.text.strip()
 
-    # 사용자 메시지
-    input_messages.append({"role": "user", "content": transcript.text})
-    
-    # 사용자 메시지 저장 및 출력
+        except Exception as e:
+            st.error(f"음성 변환 중 오류가 발생했습니다: {e}")
+            st.stop()
+
+    if not user_text:
+        st.warning("인식된 내용이 없습니다. 다시 녹음해주세요.")
+        st.stop()
+
+    # 5. 사용자 메시지 저장 및 출력
     st.session_state.messages.append(
-        {"role": "user", "content": transcript.text})
+        {"role": "user", "content": user_text}
+    )
+
     with st.chat_message("user"):
-        st.markdown(transcript.text)
+        st.markdown(user_text)
 
-    # 모델 응답 생성
+    # 6. 시스템 지침 + 이전 대화 + 이번 질문 전달
+    # 이번 질문은 위에서 messages에 이미 저장했으므로 다시 추가하지 않음
+    input_messages = [
+        {"role": "system", "content": system_content}
+    ] + st.session_state.messages
+
+    # 7. 답변 생성
     with st.spinner("답변을 준비하고 있습니다..."):
-      try:
-          response = client.responses.create(
-              model="gpt-4.1-mini",
-              input=input_messages
-          )
-          assistant_reply = response.output_text
-      except Exception as e:
-          assistant_reply = f"오류가 발생했습니다: {e}"
+        try:
+            response = client.responses.create(
+                model="gpt-4.1-mini",
+                input=input_messages
+            )
+            assistant_reply = response.output_text
 
-      # 응답 저장 및 출력
-      st.session_state.messages.append(
-          {"role": "assistant", "content": assistant_reply}
-      )
-      with st.chat_message("assistant"):
-          st.markdown(assistant_reply)
+        except Exception as e:
+            st.error(f"답변 생성 중 오류가 발생했습니다: {e}")
+            st.stop()
 
+    # 8. 정상적으로 생성된 답변만 저장 및 출력
+    st.session_state.messages.append(
+        {"role": "assistant", "content": assistant_reply}
+    )
+
+    with st.chat_message("assistant"):
+        st.markdown(assistant_reply)
