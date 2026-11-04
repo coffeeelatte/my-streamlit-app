@@ -22,8 +22,16 @@ if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant",
                                   "content": "안녕하세요. 무엇을 도와드릴까요?"}]
 
+# 대화 영역 생성: 높이가 고정되어 있어야 자동 스크롤이 작동함
+chat_area = st.container(
+    height=450,
+    border=False,
+    autoscroll=True
+)
+
 # 기존 대화 출력
-for message in st.session_state.messages:
+with chat_area:
+  for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
@@ -88,7 +96,8 @@ if submit:
         {"role": "user", "content": user_text}
     )
 
-    with st.chat_message("user"):
+    with chat_area:
+      with st.chat_message("user"):
         st.markdown(user_text)
 
     # 6. 시스템 지침 + 이전 대화 + 이번 질문 전달
@@ -116,7 +125,8 @@ if submit:
     )
 
     # 답변을 화면에 출력
-    with st.chat_message("assistant"):
+    with chat_area:
+      with st.chat_message("assistant"):
         st.markdown(assistant_reply)
 
         # TTS: 답변 텍스트 → 음성
