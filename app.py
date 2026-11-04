@@ -7,8 +7,8 @@ from openai import OpenAI
 client = OpenAI()
 
 # 페이지 설정
-st.set_page_config(page_title="음성 AI 서비스", page_icon="🤖", layout="wide")
-st.title("음성 인식 AI 서비스")
+st.set_page_config(page_title="AI 비서 에이블", page_icon="😊", layout="wide")
+st.title("😊AI음성비서 에이블입니다.")
 st.write("음성으로 질문하시면 답변해 드립니다.")
 
 # 역할 지정
