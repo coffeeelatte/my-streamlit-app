@@ -9,7 +9,7 @@ client = OpenAI()
 # 페이지 설정
 st.set_page_config(page_title="AI 비서 에이블", page_icon="😊", layout="wide")
 
-st.title("AI음성비서 에이블입니다.")
+st.title("😊AI음성비서 에이블입니다.")
 st.write("음성으로 질문하시면 답변하고, 이메일도 보내드려요.")
 
 # 역할 지정
