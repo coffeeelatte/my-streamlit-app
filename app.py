@@ -129,8 +129,8 @@ if submit:
                 audio_bytes = speech.content
                 
                 # 음성 출력
-                st.caption("### 🔊 AI 음성 재생")
-                st.audio(speech.content, format="audio/mp3")
+                st.caption("🔊 AI 음성 재생")
+                st.audio(speech.content, format="audio/mp3",autoplay=True)
 
             except Exception as e:
                 st.error(f"음성 생성 중 오류가 발생했습니다: {e}")
