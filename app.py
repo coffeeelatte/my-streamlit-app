@@ -8,24 +8,33 @@ client = OpenAI()
 
 # 페이지 설정
 st.set_page_config(page_title="AI 비서 에이블", page_icon="😊", layout="wide")
-st.title("😊AI음성비서 에이블입니다.")
+st.title("😊 AI음성비서 에이블입니다.")
 st.write("음성으로 질문하시면 답변해 드립니다.")
 
 # 역할 지정
 sys_role = """
-당신은 다양한 업무를 처리하는 AI 서비스입니다.
+당신은 다양한 업무를 처리하는 AI 개인 비서 "에이블"입니다.
 개인 비서처럼 친절하게 응대합니다.
+당신의 주요 업무 중 하나는 미팅내용을 요약하여 사용자의 업무를 파악해 전달하는 것입니다.
 """
-
-# 상태 초기화
+# 세션 상태 초기화
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = [{"role": sys_role,
+                                  "content": "안녕하세요. 무엇을 도와드릴까요?"}]
 
+# 기존 대화 출력
+for message in st.session_state.input_messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+
+# 사용자 음성 입
 # 지시 영역
 with st.form("task_form"):
     uploaded_file = st.file_uploader("텍스트 파일 업로드", type=["txt"])
     audio_value = st.audio_input("무엇을 도와드릴까요?")
     submit = st.form_submit_button("실행")
+
 
 # 버튼을 눌렀을 때만 실행
 if submit:
@@ -52,16 +61,28 @@ if submit:
 
     # 사용자 메시지
     input_messages.append({"role": "user", "content": transcript.text})
+    
+    # 사용자 메시지 저장 및 출력
+    st.session_state.input_messages.append(
+        {"role": "user", "content": transcript.text})
+    with st.chat_message("user"):
+        st.markdown(input_messages)
 
-    # LLM 호출 및 응답 듣기
+    # 모델 응답 생성
     with st.spinner("답변을 준비하고 있습니다..."):
-        # LLM 호출
-        response = client.responses.create(
-            model="gpt-4o-mini",
-            input=input_messages
-        )
-        answer = response.output_text
+      try:
+          response = client.responses.create(
+              model="gpt-4.1-mini",
+              input=st.session_state.messages
+          )
+          assistant_reply = response.output_text
+      except Exception as e:
+          assistant_reply = f"오류가 발생했습니다: {e}"
 
-        # 응답 출력
-        st.subheader("AI 답변")
-        st.write(answer)
+      # 응답 저장 및 출력
+      st.session_state.messages.append(
+          {"role": "assistant", "content": assistant_reply}
+      )
+      with st.chat_message("assistant"):
+          st.markdown(assistant_reply)
+
