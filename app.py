@@ -30,10 +30,16 @@ for message in st.session_state.messages:
 
 # 사용자 음성 입력
 # 지시 영역
-with st.form("task_form"):
-    uploaded_file = st.file_uploader("텍스트 파일 업로드", type=["txt"])
-    audio_value = st.audio_input("무엇을 도와드릴까요?")
-    submit = st.form_submit_button("실행")
+# 화면 하단에 입력 영역 고정
+with st.bottom:
+    with st.form("task_form"):
+        uploaded_file = st.file_uploader(
+            "텍스트 파일 업로드",
+            type=["txt"]
+        )
+
+        audio_value = st.audio_input("무엇을 도와드릴까요?")
+        submit = st.form_submit_button("실행")
 
 
 # 버튼을 눌렀을 때만 실행
