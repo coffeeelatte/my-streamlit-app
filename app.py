@@ -9,12 +9,19 @@ client = OpenAI()
 # 페이지 설정
 st.set_page_config(page_title="AI 비서 에이블", page_icon="😊", layout="wide")
 st.title("😊 AI음성비서 에이블입니다.")
-st.write("음성으로 질문하시면 답변해 드립니다.")
-st.write('''
-1. 멀티턴 음성챗봇으로, 당신과의 대화를 기억합니다.
-2. 요청시, 답변 내용을 이메일로 보내드립니다.
-3. 음성으로 질문하면, 음성과 텍스트로 답변해드립니다.
-''')
+# 에이블 이미지 경로
+BOT_IMAGE = "/content/drive/MyDrive/project03/Docs/able.png"
+
+# 이미지와 소개 문구를 나란히 배치
+image_col, text_col = st.columns([1, 5])
+
+with image_col:
+    st.image(BOT_IMAGE, width=140)
+
+with text_col:
+    st.title("AI 음성비서 에이블")
+    st.write("음성으로 질문하시면 답변하고, 이메일도 보내드려요.")
+
 # 역할 지정
 sys_role = """
 당신은 다양한 업무를 처리하는 AI 개인 비서 "에이블"입니다.
