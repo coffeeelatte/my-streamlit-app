@@ -9,20 +9,8 @@ client = OpenAI()
 # 페이지 설정
 st.set_page_config(page_title="AI 비서 에이블", page_icon="😊", layout="wide")
 
-# 에이블 이미지 경로
-from pathlib import Path
-# app.py가 있는 폴더에서 able.png 찾기
-BOT_IMAGE = str(Path(__file__).resolve().parent / "able.png")
-
-# 이미지와 소개 문구를 나란히 배치
-image_col, text_col = st.columns([1, 5])
-
-with image_col:
-    st.image(BOT_IMAGE, width=140)
-
-with text_col:
-    st.title("AI음성비서 에이블입니다.")
-    st.write("음성으로 질문하시면 답변하고, 이메일도 보내드려요.")
+st.title("AI음성비서 에이블입니다.")
+st.write("음성으로 질문하시면 답변하고, 이메일도 보내드려요.")
 
 # 역할 지정
 sys_role = """
