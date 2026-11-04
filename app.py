@@ -1,38 +1,67 @@
+
+import os, base64, json, requests
 import streamlit as st
-from chatbot_service import multiturn_chatbot
+from openai import OpenAI
 
-# 1. 페이지 설정
-st.set_page_config(page_title="AI비서 에이블", 
-                   page_icon="😊",
-                   layout="wide"
-)
+# OpenAI 클라이언트 생성
+client = OpenAI()
 
-# 2. 사이드바: 서비스 선택
-st.sidebar.title("서비스 메뉴")
+# 페이지 설정
+st.set_page_config(page_title="음성 AI 서비스", page_icon="🤖", layout="wide")
+st.title("음성 인식 AI 서비스")
+st.write("음성으로 질문하시면 답변해 드립니다.")
 
-service = st.sidebar.radio(
-    "사용할 서비스를 선택하세요",
-    ["홈", "멀티턴 챗봇", "계산기"]
-)
+# 역할 지정
+sys_role = """
+당신은 다양한 업무를 처리하는 AI 서비스입니다.
+개인 비서처럼 친절하게 응대합니다.
+"""
 
-# 3. 본문: 선택한 서비스에 따라 다른 화면 표시
-if service == "홈":
-    st.title("나의 서비스 모음")
-    st.write("왼쪽 사이드바에서 사용할 서비스를 선택하세요.")
+# 상태 초기화
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
+# 지시 영역
+with st.form("task_form"):
+    uploaded_file = st.file_uploader("텍스트 파일 업로드", type=["txt"])
+    audio_value = st.audio_input("무엇을 도와드릴까요?")
+    submit = st.form_submit_button("실행")
 
+# 버튼을 눌렀을 때만 실행
+if submit:
+    # 업로드 된 파일이 있으면 디코딩
+    text = ""
+    if uploaded_file is not None:
+        text = uploaded_file.read().decode("utf-8")
 
-elif service == "멀티턴 챗봇":
-  multiturn_chatbot()
+    # 녹음이 없으면 녹음 요청
+    if audio_value is None:
+        st.warning("음성을 녹음해주세요.")
+        st.stop()
 
+    # 시스템 메세지
+    system_content = sys_role
+    if text:
+        system_content += f"\n\n다음 내용을 참고하세요:\n{text}"
+    input_messages = [{"role": "system", "content": system_content}]
 
+    # STT: 음성 → 텍스트
+    transcript = client.audio.transcriptions.create(
+        model="whisper-1",
+        file=("audio.wav", audio_value, "audio/wav"))
 
-elif service == "계산기":
-    st.title("두 수 더하기")
+    # 사용자 메시지
+    input_messages.append({"role": "user", "content": transcript.text})
 
-    num1 = st.number_input("첫 번째 숫자", value=0.0)
-    num2 = st.number_input("두 번째 숫자", value=0.0)
+    # LLM 호출 및 응답 듣기
+    with st.spinner("답변을 준비하고 있습니다..."):
+        # LLM 호출
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input=input_messages
+        )
+        answer = response.output_text
 
-    if st.button("계산하기"):
-        result = num1 + num2
-        st.success(f"계산 결과: {result}")
+        # 응답 출력
+        st.subheader("AI 답변")
+        st.write(answer)
