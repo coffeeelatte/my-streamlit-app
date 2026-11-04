@@ -19,16 +19,16 @@ sys_role = """
 """
 # 세션 상태 초기화
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": sys_role,
+    st.session_state.messages = [{"role": "assistant",
                                   "content": "안녕하세요. 무엇을 도와드릴까요?"}]
 
 # 기존 대화 출력
-for messages in st.session_state.input_messages:
-    with st.chat_message(messages["role"]):
-        st.markdown(messages["content"])
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
 
-# 사용자 음성 입
+# 사용자 음성 입력
 # 지시 영역
 with st.form("task_form"):
     uploaded_file = st.file_uploader("텍스트 파일 업로드", type=["txt"])
@@ -63,17 +63,17 @@ if submit:
     input_messages.append({"role": "user", "content": transcript.text})
     
     # 사용자 메시지 저장 및 출력
-    st.session_state.input_messages.append(
+    st.session_state.messages.append(
         {"role": "user", "content": transcript.text})
     with st.chat_message("user"):
-        st.markdown(input_messages)
+        st.markdown(transcript.text)
 
     # 모델 응답 생성
     with st.spinner("답변을 준비하고 있습니다..."):
       try:
           response = client.responses.create(
               model="gpt-4.1-mini",
-              input=st.session_state.messages
+              input=input_messages
           )
           assistant_reply = response.output_text
       except Exception as e:
