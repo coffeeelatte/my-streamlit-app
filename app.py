@@ -374,6 +374,29 @@ hr {
     border-color: #e9eff2;
 }
 
+
+/* 캘린더 오른쪽 패널: 본문과 함께 흘러가지 않고 화면 상단에 유지 */
+@media (min-width: 769px) {
+    [data-testid="stColumn"]:has(.st-key-upcoming_panel) {
+        position: sticky;
+        top: 4.5rem;
+        align-self: flex-start;
+        height: fit-content;
+        max-height: calc(100dvh - 5.5rem);
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        scrollbar-width: thin;
+    }
+}
+/* 좁은 화면에서 세로로 쌓이는 패널은 본문을 가리지 않도록 일반 배치 */
+@media (max-width: 768px) {
+    [data-testid="stColumn"]:has(.st-key-upcoming_panel) {
+        position: static;
+        max-height: none;
+        overflow: visible;
+    }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -1336,35 +1359,24 @@ with right:
     """)
 
     if st.session_state.active_page == 'calendar':
-        st.subheader('🔔 다가오는 일정')
-        horizon = st.selectbox('미리 보기', [3, 7, 14, 30], index=1, format_func=lambda n: f'{n}일 이내')
-        reminders = []
-        for item in visible_events():
-            if item.get('cert') or item.get('mode', 'once') != 'once' or st.session_state.calendar_done.get(task_key(item, korea_today())):
-                continue
-            remaining = (date.fromisoformat(item['end']) - korea_today()).days
-            if -7 <= remaining <= horizon:
-                reminders.append((item['end'], remaining, item))
-        for _, remaining, item in sorted(reminders, key=lambda r: (r[0], r[2]['id'])):
-            badge = f'{-remaining}일 지남' if remaining < 0 else ('오늘' if remaining == 0 else f'D-{remaining}')
-            with st.container(border=True):
-                st.write(f"**{badge} · {item['title']}**")
-                st.caption(item['end'])
-        if not reminders:
-            st.caption('해당 기간에 미완료 마감·행사 일정이 없습니다.')
-        st.caption('최근 7일 미완료 일정 포함 · 앱 안에서 확인하는 알림입니다.')
-        st.divider()
-        st.markdown('**AX 챌린지 자격증**')
-        st.caption('2026년 시험·접수 일정과 공식 발표가 확인된 2027년 1~3월 COS Pro 일정을 제공합니다. 확인 기준: ' + CERT_CHECKED)
-        with st.expander('자격증 일정 이용 안내'):
-            st.markdown('[Azure Associate·Expert 시험 예약](https://learn.microsoft.com/en-us/credentials/certifications/register-schedule-exam)')
-            st.write('Azure는 개별 예약형입니다. 예약한 시험일을 개인 일정으로 추가하세요.')
-            st.caption('ADP·DAP 일정은 사용자가 공식 문서와 대조해 확인한 내용입니다.')
-            st.write('IT-PMP는 교육기관 게재 공고를 근거로 합니다. 필요하면 자격증 필터에서 선택하세요. 시행기관 원문은 미대조입니다.')
-            st.write('구 정보처리기능사는 프로그래밍기능사, 구 전자계산기기사·전자계산기조직응용기사는 컴퓨터시스템기사 명칭으로 표시합니다. 변경 명칭의 AX 인정 여부는 교육 운영진에게 확인하세요.')
-            st.write('추가 9종의 AX 적용일은 제공받은 안내 기준 2026-11-09입니다. 시험 일정 표시와 지원금·공결 인정 여부는 별개입니다.')
-        st.caption('교육 일정은 백서, 시험 일정은 각 일정의 출처 기준입니다. 접수 전 최신 공지를 확인하세요.')
-        st.caption('완료·개인 일정·출결 메모는 현재 접속 세션에서 유지됩니다. 재접속 후 영구 보존은 지원하지 않습니다.')
+        with st.container(key='upcoming_panel'):
+            st.subheader('🔔 다가오는 일정')
+            horizon = st.selectbox('미리 보기', [3, 7, 14, 30], index=1, format_func=lambda n: f'{n}일 이내')
+            reminders = []
+            for item in visible_events():
+                if item.get('cert') or item.get('mode', 'once') != 'once' or st.session_state.calendar_done.get(task_key(item, korea_today())):
+                    continue
+                remaining = (date.fromisoformat(item['end']) - korea_today()).days
+                if -7 <= remaining <= horizon:
+                    reminders.append((item['end'], remaining, item))
+            for _, remaining, item in sorted(reminders, key=lambda r: (r[0], r[2]['id'])):
+                badge = f'{-remaining}일 지남' if remaining < 0 else ('오늘' if remaining == 0 else f'D-{remaining}')
+                with st.container(border=True):
+                    st.write(f"**{badge} · {item['title']}**")
+                    st.caption(item['end'])
+            if not reminders:
+                st.caption('해당 기간에 미완료 마감·행사 일정이 없습니다.')
+            st.caption('최근 7일 미완료 일정 포함 · 앱 안에서 확인하는 알림입니다.')
     else:
         # 학습 도우미 안내
         st.html("""
