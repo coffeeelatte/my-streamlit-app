@@ -410,6 +410,19 @@ hr {
 .today-basis { color: #718c85; font-size: 11px; }
 @media(max-width: 600px) { .today-card { padding: 20px 16px; gap: 15px; } .today-stamp { min-width: 72px; } .today-number { font-size: 36px; } }
 
+
+.cert-exam-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 10px 0 18px; }
+.cert-exam-card { background: #fff; border: 1px solid #d4e6e2; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; box-shadow: 0 5px 18px rgba(32,86,76,.04); min-width: 0; }
+.cert-card-badge { color: #137f6e; background: #edf8f4; border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 650; align-self: flex-start; }
+.cert-exam-card h3 { color: #29473e; font-size: 19px; line-height: 1.5; margin: 14px 0 16px; overflow-wrap: anywhere; }
+.cert-exam-card dl { margin: 0 0 22px; }
+.cert-exam-card dt { color: #738a83; font-size: 12px; margin-bottom: 4px; }
+.cert-exam-card dd { color: #3e534d; font-size: 14px; line-height: 1.7; margin: 0 0 12px; overflow-wrap: anywhere; }
+a.cert-apply-link { display: block; text-align: center; background: #eef8f4; color: #117963 !important; border: 1px solid #cce9df; border-radius: 11px; padding: 11px 12px; margin-top: auto; text-decoration: none !important; font-size: 14px; font-weight: 650; }
+a.cert-apply-link:hover { background: #dcf1e8; border-color: #80baa7; }
+a.cert-apply-link:focus-visible { outline: 3px solid #168a72; outline-offset: 3px; }
+@media(max-width: 640px) { .cert-exam-grid { grid-template-columns: 1fr; } }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -967,10 +980,6 @@ with left:
           </div>
         </section>
         """)
-        if st.button('오늘로 이동', key='calendar_today'):
-            st.session_state.selected_calendar_date = today
-            st.session_state.calendar_month = today.replace(day=1)
-            st.rerun()
         with st.container(key="calendar_panel"):
             # 월 이동 및 월 표시
             month_prev, month_title, month_next = st.columns([1, 5, 1])
@@ -1084,26 +1093,32 @@ with left:
             cert_notices = nearest_cert_exams(selected_day)
             st.caption(f'{selected_day:%Y년 %m월 %d일} 기준 · 자격증별 가장 가까운 시험')
             if cert_notices:
+                cards = []
                 for item, registrations in cert_notices:
-                    with st.container(border=True):
-                        st.write('**' + item['title'] + '**')
-                        st.caption('시험: ' + item['start'] + (' ~ ' + item['end'] if item['start'] != item['end'] else ''))
-                        # 분리된 접수 구간은 날짜를 보존하면서 한 줄로 표시합니다.
-                        if registrations:
-                            periods = []
-                            for registration in registrations:
-                                period = registration['start']
-                                if registration['start'] != registration['end']:
-                                    period += ' ~ ' + registration['end']
-                                if registration['stage'] == '접수 마감':
-                                    period += ' 마감'
-                                if period not in periods:
-                                    periods.append(period)
-                            st.caption('접수 기간: ' + ' / '.join(periods))
-                        else:
-                            st.caption('접수 기간: 별도 공지')
-                        registration_url, registration_label, registration_help = registration_destination(item['cert'])
-                        st.link_button(registration_label, registration_url)
+                    exam_dates = item['start'] + (' ~ ' + item['end'] if item['start'] != item['end'] else '')
+                    periods = []
+                    for registration in registrations:
+                        period = registration['start']
+                        if registration['start'] != registration['end']:
+                            period += ' ~ ' + registration['end']
+                        if registration['stage'] == '접수 마감':
+                            period += ' 마감'
+                        if period not in periods:
+                            periods.append(period)
+                    registration_dates = ' / '.join(periods) if periods else '별도 공지'
+                    url, label, _ = registration_destination(item['cert'])
+                    cards.append(f"""
+                    <article class="cert-exam-card">
+                      <div class="cert-card-badge">{html.escape(item['attempt'])} · {html.escape(item['stage'])}</div>
+                      <h3>{html.escape(item['cert'])}</h3>
+                      <dl>
+                        <dt>시험일</dt><dd>{html.escape(exam_dates)}</dd>
+                        <dt>접수 기간</dt><dd>{html.escape(registration_dates)}</dd>
+                      </dl>
+                      <a class="cert-apply-link" href="{html.escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">{html.escape(label)} ↗</a>
+                    </article>
+                    """)
+                st.html('<div class="cert-exam-grid">' + ''.join(cards) + '</div>')
             else:
                 st.caption('선택한 자격증에 대해 기준일 이후 확인된 시험 일정이 없습니다.')
             st.divider()
