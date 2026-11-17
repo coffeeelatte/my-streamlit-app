@@ -895,10 +895,6 @@ with left:
         </div>
         """)
 
-        st.multiselect('표시할 자격증', CERT_NAMES,
-                       default=st.session_state.cert_preferences, key='cert_filter',
-                       on_change=remember_cert_filter)
-        st.caption('자격증은 참고 일정으로 표시하며 할 일에 자동 등록하지 않습니다. 응시할 시험은 개인 일정으로 추가하세요.')
         st.caption(f'한국시간 기준 오늘 · {korea_today():%Y년 %m월 %d일}')
         if st.button('오늘로 이동', key='calendar_today'):
             st.session_state.selected_calendar_date = korea_today()
@@ -1017,29 +1013,32 @@ with left:
             st.caption('기간 신청은 한 번 완료, 여러 날의 교육·프로젝트는 날짜별 완료로 관리합니다.')
             st.divider()
             st.subheader('가장 가까운 자격증 시험')
+            st.multiselect('표시할 자격증', CERT_NAMES,
+                           default=st.session_state.cert_preferences, key='cert_filter',
+                           on_change=remember_cert_filter)
             cert_notices = nearest_cert_exams(selected_day)
-            st.caption(f'{selected_day:%Y년 %m월 %d일} 기준 · 자격증별 가장 가까운 시험 1개(진행 중인 시행기간 포함). 개인 할 일에 자동 등록하지 않습니다.')
+            st.caption(f'{selected_day:%Y년 %m월 %d일} 기준 · 자격증별 가장 가까운 시험')
             if cert_notices:
                 for item, registrations in cert_notices:
                     with st.container(border=True):
                         st.write('**' + item['title'] + '**')
                         st.caption('시험: ' + item['start'] + (' ~ ' + item['end'] if item['start'] != item['end'] else ''))
-                        if item.get('mode') == 'window':
-                            st.caption('시행기간 안내 · 개인 응시일은 수험표에서 확인하세요.')
-                        for registration in registrations:
-                            status = ('접수 종료' if registration['end'] < selected_day.isoformat()
-                                      else '접수 예정' if registration['start'] > selected_day.isoformat()
-                                      else '접수 기간')
-                            st.caption(status + ': ' + registration['start'] +
-                                       (' ~ ' + registration['end'] if registration['start'] != registration['end'] else '') +
-                                       (' (마감일만 확인)' if registration['stage'] == '접수 마감' else ''))
-                        if not registrations:
-                            st.caption('접수기간은 접수 사이트에서 확인하세요.')
-                        if item.get('memo'):
-                            st.caption(item['memo'])
+                        # 분리된 접수 구간은 날짜를 보존하면서 한 줄로 표시합니다.
+                        if registrations:
+                            periods = []
+                            for registration in registrations:
+                                period = registration['start']
+                                if registration['start'] != registration['end']:
+                                    period += ' ~ ' + registration['end']
+                                if registration['stage'] == '접수 마감':
+                                    period += ' 마감'
+                                if period not in periods:
+                                    periods.append(period)
+                            st.caption('접수 기간: ' + ' / '.join(periods))
+                        else:
+                            st.caption('접수 기간: 별도 공지')
                         registration_url, registration_label, registration_help = registration_destination(item['cert'])
                         st.link_button(registration_label, registration_url)
-                        st.caption(registration_help)
             else:
                 st.caption('선택한 자격증에 대해 기준일 이후 확인된 시험 일정이 없습니다.')
             st.divider()
