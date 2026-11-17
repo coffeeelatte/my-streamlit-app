@@ -1,11 +1,11 @@
-
 import streamlit as st
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_chroma import Chroma
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import HumanMessage, AIMessage
+import calendar as pycalendar
+import uuid
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+import html
 from operator import itemgetter
+
 
 # ==========================================
 # 1. 페이지 설정
@@ -16,6 +16,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 
 # ==========================================
 # 2. CSS 디자인
@@ -28,30 +29,35 @@ st.markdown("""
     background-color: #edf6f7;
 }
 
-/* 기본 여백 */
+/* 전체 여백 */
 .block-container {
     padding-top: 2rem;
     padding-bottom: 2rem;
     max-width: 1500px;
 }
 
-/* 상단 메뉴 숨기기 */
-#MainMenu, footer, header {
+/* 기본 메뉴 및 푸터 숨기기 */
+#MainMenu, footer {
     visibility: hidden;
+}
+
+/* 상단 헤더 유지 - 사이드바 버튼 보호 */
+.stAppHeader {
+    background-color: transparent;
 }
 
 /* 사이드바 */
 section[data-testid="stSidebar"] {
     background-color: #78c5cd;
     min-width: 230px;
-    max-width: 230px;
 }
 
+/* 사이드바 내부 여백 */
 section[data-testid="stSidebar"] > div {
     padding: 25px 15px;
 }
 
-/* 사이드바 텍스트 */
+/* 사이드바 글자 */
 section[data-testid="stSidebar"] p,
 section[data-testid="stSidebar"] label {
     color: white;
@@ -64,6 +70,12 @@ section[data-testid="stSidebar"] label {
     padding: 17px 10px;
     margin-bottom: 30px;
     text-align: center;
+}
+
+.logo-area p {
+    color: #9aa8b0 !important;
+    font-size: 11px;
+    margin-bottom: 0;
 }
 
 /* 사이드바 메뉴 */
@@ -94,7 +106,7 @@ section[data-testid="stSidebar"] label {
     margin-bottom: 20px;
 }
 
-/* 상단 검색창 */
+/* 검색창 */
 div[data-testid="stTextInput"] input {
     border: none;
     border-radius: 15px;
@@ -103,13 +115,14 @@ div[data-testid="stTextInput"] input {
     box-shadow: 0 3px 15px rgba(30,60,80,0.07);
 }
 
-/* 카드 공통 */
+/* 대시보드 카드 */
 .dashboard-card {
     border-radius: 23px;
     padding: 24px;
     min-height: 155px;
     box-shadow: 0 5px 20px rgba(50,80,100,0.07);
     margin-bottom: 18px;
+    box-sizing: border-box;
 }
 
 .welcome-card {
@@ -125,11 +138,13 @@ div[data-testid="stTextInput"] input {
 .dashboard-card h3 {
     font-size: 20px;
     margin: 0 0 12px 0;
+    color: white;
 }
 
 .dashboard-card p {
     font-size: 13px;
     line-height: 1.7;
+    color: white;
 }
 
 /* 기능 카드 */
@@ -141,6 +156,7 @@ div[data-testid="stTextInput"] input {
     min-height: 105px;
     text-align: center;
     color: #263c54;
+    box-sizing: border-box;
 }
 
 .feature-icon {
@@ -167,6 +183,61 @@ div[data-testid="stTextInput"] input {
     margin: 15px 0;
 }
 
+/* 출결 및 일정 달력 */
+.st-key-calendar_panel {
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 22px;
+    margin: 18px 0 24px 0;
+    box-shadow: 0 5px 20px rgba(50,80,100,0.06);
+}
+.calendar-panel {
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 22px;
+    margin: 18px 0 24px 0;
+    box-shadow: 0 5px 20px rgba(50,80,100,0.06);
+}
+.calendar-caption {
+    color: #91a2ae;
+    font-size: 12px;
+    margin-top: -6px;
+    margin-bottom: 12px;
+}
+.calendar-weekday {
+    text-align: center;
+    color: #7f929f;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 0;
+}
+.calendar-legend {
+    color: #8496a3;
+    font-size: 11px;
+    margin-top: 10px;
+}
+.calendar-subcard {
+    background: #f7fafc;
+    border: 1px solid #edf2f5;
+    border-radius: 16px;
+    padding: 15px;
+    min-height: 150px;
+}
+.calendar-subtitle {
+    color: #19334d;
+    font-weight: 800;
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+
+section[data-testid="stSidebar"] button p {color:inherit !important;}
+button[kind="primary"] {background:#43aebe !important;color:white !important;border-color:#43aebe !important;}
+.st-key-calendar_panel .stButton > button {min-height:58px;}
+/* 달력 날짜 버튼 */
+.st-key-calendar_day button {
+    min-height: 58px;
+}
+
 /* 채팅 영역 */
 .st-key-chat_panel {
     background-color: white;
@@ -176,19 +247,35 @@ div[data-testid="stTextInput"] input {
     min-height: 450px;
 }
 
-/* 채팅 메시지 */
+/* 채팅 제목 */
+.chat-heading {
+    font-size: 17px;
+    font-weight: 800;
+    color: #19334d;
+    margin-bottom: 12px;
+}
+
+.chat-description {
+    font-size: 12px;
+    color: #9baab4;
+    margin-bottom: 15px;
+}
+
+/* 채팅 말풍선 */
 div[data-testid="stChatMessage"] {
     border-radius: 15px;
     padding: 13px;
     margin-bottom: 12px;
 }
 
+/* 사용자 메시지 */
 div[data-testid="stChatMessage"]:has(
     div[data-testid="chatAvatarIcon-user"]
 ) {
     background-color: #e5f5f5;
 }
 
+/* AI 메시지 */
 div[data-testid="stChatMessage"]:has(
     div[data-testid="chatAvatarIcon-assistant"]
 ) {
@@ -206,7 +293,7 @@ div[data-testid="stChatMessage"]:has(
 }
 
 .profile-icon {
-    font-size: 48px;
+    font-size: 42px;
     background-color: #e9f1fa;
     width: 80px;
     height: 80px;
@@ -225,6 +312,7 @@ div[data-testid="stChatMessage"]:has(
 .profile-desc {
     font-size: 12px;
     color: #a1adb8;
+    margin-top: 5px;
 }
 
 /* 오른쪽 정보 카드 */
@@ -241,6 +329,12 @@ div[data-testid="stChatMessage"]:has(
     font-size: 15px;
     font-weight: 800;
     margin-bottom: 12px;
+}
+
+.info-card p {
+    font-size: 12px;
+    color: #9aa8b3;
+    line-height: 1.8;
 }
 
 /* 버튼 */
@@ -260,14 +354,6 @@ div[data-testid="stChatMessage"]:has(
     background-color: #f0fbfb;
 }
 
-/* 채팅 입력창 */
-div[data-testid="stForm"] {
-    background-color: #f3f6fa;
-    border-radius: 15px;
-    padding: 10px;
-    border: none;
-}
-
 /* 파일 업로드 */
 div[data-testid="stFileUploader"] {
     background-color: white;
@@ -275,6 +361,15 @@ div[data-testid="stFileUploader"] {
     padding: 10px;
 }
 
+/* 채팅 입력 폼 */
+div[data-testid="stForm"] {
+    background-color: #f3f6fa;
+    border-radius: 15px;
+    padding: 10px;
+    border: none;
+}
+
+/* 구분선 */
 hr {
     border-color: #e9eff2;
 }
@@ -290,12 +385,18 @@ CHROMA_DIR = "chroma_db"
 COLLECTION = "aivle_docs"
 
 
+# 문서 포맷팅 함수
 def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    return "\n\n".join(
+        doc.page_content for doc in docs
+    )
 
 
+# Embedding 및 검색기
 @st.cache_resource
 def get_retriever():
+    from langchain_openai import OpenAIEmbeddings
+    from langchain_chroma import Chroma
 
     embedding = OpenAIEmbeddings(
         model="text-embedding-3-small"
@@ -312,8 +413,12 @@ def get_retriever():
     )
 
 
+# RAG 체인
 @st.cache_resource
 def get_chain():
+    from langchain_openai import ChatOpenAI
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.output_parsers import StrOutputParser
 
     retriever = get_retriever()
 
@@ -355,13 +460,119 @@ def get_chain():
 
 
 # ==========================================
-# 4. 세션 상태
+# 4. 세션 상태 초기화
 # ==========================================
+KST = ZoneInfo('Asia/Seoul')
+
+
+def korea_today(now=None):
+    """서버의 시간대와 무관하게 한국 날짜를 사용합니다."""
+    return (now or datetime.now(KST)).astimezone(KST).date()
+
+
+def event(eid, title, start, end=None, category='취업지원', mode='once',
+          period='시간 미정', description='', source='백서 7.2.1 · 본문 51쪽'):
+    return dict(id=eid, title=title, start=start, end=end or start,
+                category=category, mode=mode, period=period,
+                description=description, source=source)
+
+
+# 종료일은 포함입니다. 연도 생략 일정은 10기 과정의 연속성을 따라 2026→2027로 정리했습니다.
+# mode: once=기간 중 한 번 완료, daily=날짜별 완료, info=안내(체크 없음).
+EVENTS = [
+    event('day1-am', '코딩테스트 1차', '2026-11-13', category='교육', period='오전'),
+    event('day1-pm', '취업지원 안내·포트폴리오 강의·네트워킹', '2026-11-13', period='오후'),
+    event('mini4', '미니프로젝트 4차', '2026-11-16', '2026-11-17', '프로젝트', 'daily',
+          description='백서·RAG 학습 도우미 구축. 각 날짜의 진행 완료를 체크합니다.', source='백서 3.2 · 본문 29쪽'),
+    event('signup', '취업지원 플랫폼 회원가입', '2026-11-16', '2026-11-18',
+          description='회원가입 후 구직희망 정보, 입사지원서, 포트폴리오를 등록합니다. 마감 시각은 백서에 명시되어 있지 않습니다.'),
+    event('platform', '취업지원 플랫폼 이용 가능', '2026-11-16', '2027-09-05', mode='info'),
+    event('ai-interview', 'AI 면접·AI 역량평가 연습', '2026-11-17', '2027-09-05', mode='info',
+          description='해당 기간 최대 15회 연습 가능. 매일 의무적으로 해야 하는 할 일은 아닙니다.'),
+    event('portfolio', '포트폴리오 컨설팅 신청', '2026-11-30', '2026-12-02',
+          description='신청 기간입니다. 실제 컨설팅은 빅프로젝트 이전 진행하며 개인별 시간은 별도 안내됩니다.'),
+    event('day2-am', '코딩테스트 2차', '2026-12-24', category='교육', period='오전'),
+    event('day2-pm', 'AI 상상광고 챌린지·면접 전략 특강', '2026-12-24', period='오후',
+          description='AIVLE Day 2. 클래스 네트워킹 포함.'),
+    event('resume-consult', '자기소개서 컨설팅 신청', '2026-12-28', '2027-01-03',
+          description='신청 기간입니다. 실제 컨설팅은 빅프로젝트 기간 중 진행됩니다.'),
+    event('interview-consult', '면접 컨설팅 신청', '2027-01-20', '2027-01-22',
+          description='신청 기간입니다. 실제 컨설팅은 빅프로젝트 기간 중 진행됩니다.'),
+    event('refresh-project', '빅프로젝트 재정비', '2027-02-22', category='프로젝트', period='오전'),
+    event('refresh-portfolio', '포트폴리오 재정비·실전 피칭 강의', '2027-02-22', period='오후'),
+    event('presession', '발표회 프리세션', '2027-02-23', category='프로젝트', period='오전'),
+    event('aptitude', '기업 인적성검사 대비·발표회 준비', '2027-02-23', period='오후'),
+    event('presentation', '빅프로젝트 발표회', '2027-02-24', category='프로젝트', period='종일',
+          description='백서에는 같은 날 클래스 네트워킹도 안내되어 있습니다.'),
+    event('resume-class', '이력서·자기소개서 강의', '2027-02-25', period='오전'),
+    event('resume-practice', '이력서·자기소개서 실습·잡서칭', '2027-02-25', period='오후'),
+    event('jobfair', 'AIVLE 잡페어', '2027-02-26', period='종일', description='장소와 참여 기업은 추후 안내.'),
+    event('mock-interview', '조별 모의면접·면접 스터디', '2027-03-02', '2027-03-03', mode='daily', period='오전'),
+    event('jobsearch', '잡서칭 세션', '2027-03-02', '2027-03-03', mode='daily', period='오후'),
+    event('platform-class', '취업 플랫폼 강의', '2027-03-04', period='오전'),
+    event('platform-practice', '취업 플랫폼 실습', '2027-03-04', period='오후'),
+    event('graduation', '에이블스쿨 수료', '2027-03-05', category='교육', source='백서 3.2 · 본문 30쪽'),
+]
+
+
+def task_key(item, day):
+    return item['id'] + (':' + day.isoformat() if item.get('mode') == 'daily' else '')
+
+
+def update_done(task_id, widget_key):
+    st.session_state.calendar_done[task_id] = st.session_state[widget_key]
+
+
+def navigate(page):
+    st.session_state.active_page = page
+
+
+st.session_state.setdefault('active_page', 'home')
+st.session_state.setdefault('calendar_done', {})
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "pending_prompt" not in st.session_state:
     st.session_state.pending_prompt = None
+
+# 달력/출결/일정 데이터
+if "calendar_month" not in st.session_state:
+    st.session_state.calendar_month = korea_today().replace(day=1)
+
+if "selected_calendar_date" not in st.session_state:
+    st.session_state.selected_calendar_date = korea_today()
+
+if "calendar_events" not in st.session_state:
+    st.session_state.calendar_events = [
+        {**e, 'type': e['category'], 'memo': e['description'], 'official': True}
+        for e in EVENTS
+    ]
+
+if "attendance_records" not in st.session_state:
+    st.session_state.attendance_records = {}
+
+
+def events_on(day):
+    """해당 날짜에 진행 중인 일정 목록을 반환합니다."""
+    result = []
+    for event in st.session_state.calendar_events:
+        start = date.fromisoformat(event["start"])
+        end = date.fromisoformat(event["end"])
+        if start <= day <= end:
+            result.append(event)
+    return result
+
+
+# 검색창 콜백
+def submit_search():
+
+    value = st.session_state.get(
+        "search_input", ""
+    ).strip()
+
+    if value:
+        st.session_state.pending_prompt = value
 
 
 # ==========================================
@@ -369,219 +580,494 @@ if "pending_prompt" not in st.session_state:
 # ==========================================
 with st.sidebar:
 
-    # 로고
-    st.markdown("""
+    # AIVLE 로고
+    st.html("""
     <div class="logo-area">
-        <img src="https://raw.githubusercontent.com/Jangrae/img/master/aivle.png"
-        width="145">
-        <p style="color:#9aa8b0; font-size:11px;">
-        AIVLE SCHOOL
-        </p>
+        <img
+            src="https://raw.githubusercontent.com/Jangrae/img/master/aivle.png"
+            width="145">
+        <p>AIVLE SCHOOL</p>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
-    # 메뉴
-    st.markdown("""
-    <div class="menu-item menu-active">🏠　홈</div>
-    <div class="menu-item">📚　학습 도우미</div>
-    <div class="menu-item">📁　학습 자료</div>
-    <div class="menu-item">💬　대화 기록</div>
-    """, unsafe_allow_html=True)
+    # 실제 페이지 이동 버튼: 홈과 캘린더만 연결했습니다.
+    st.button('🏠 홈', key='nav_home', on_click=navigate, args=('home',),
+              type='primary' if st.session_state.active_page == 'home' else 'secondary',
+              use_container_width=True)
+    st.button('🗓️ 캘린더 · 할 일', key='nav_calendar', on_click=navigate, args=('calendar',),
+              type='primary' if st.session_state.active_page == 'calendar' else 'secondary',
+              use_container_width=True)
+    # 나머지 팀 메뉴(기존 디자인)
+    st.html("""
+    <div class="menu-item">
+        👋　소개
+    </div>
+    <div class="menu-item">
+        📚　교육과정
+    </div>
+    <div class="menu-item">
+        💼　취업과정
+    </div>
+    <div class="menu-item">
+        🗂️　포트폴리오
+    </div>
+    <div class="menu-item">
+        📂　파일 불러오기
+    </div>
+    <div class="menu-item">
+        🧩　온톨로지
+    </div>
+    """)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    st.markdown("""
+    # 관리자
+    st.html("""
     <p style="font-size:14px;font-weight:800;color:white;">
-    ⚙️ 관리자
+        ⚙️ 관리자
     </p>
-    """, unsafe_allow_html=True)
+    """)
 
     uploaded_file = st.file_uploader(
         "파일 업로드",
         type=["pdf", "txt", "docx"]
     )
 
-    if uploaded_file:
-        st.success(f"{uploaded_file.name} 선택됨")
+    if uploaded_file is not None:
+        st.success(
+            f"{uploaded_file.name} 선택됨"
+        )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("🗑️ 대화 삭제", use_container_width=True):
+    # 대화 삭제
+    if st.button(
+        "🗑️ 대화 삭제",
+        use_container_width=True
+    ):
+
         st.session_state.messages = []
         st.session_state.pending_prompt = None
         st.rerun()
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
-    st.markdown("""
+    st.html("""
     <p style="color:white;font-size:12px;">
-    AIVLE School<br>
-    Learning Assistant
+        AIVLE School<br>
+        Learning Assistant
     </p>
-    """, unsafe_allow_html=True)
+    """)
 
 
 # ==========================================
-# 6. 메인 화면 레이아웃
+# 6. 전체 화면 레이아웃
 # ==========================================
-left, right = st.columns([7, 3], gap="large")
+left, right = st.columns(
+    [7, 3],
+    gap="large"
+)
 
 
 # ==========================================
-# 7. 중앙 메인 영역
+# 7. 중앙 대시보드
 # ==========================================
+submitted = False
+question = ""
 with left:
-
-    # 인사말 및 검색창
-    title_col, search_col = st.columns([5, 4])
-
-    with title_col:
-        st.markdown("""
-        <div class="greeting">Hello, AIVLE! 👋</div>
-        <div class="sub-greeting">
-        오늘도 새로운 지식을 함께 배워봐요.
+    if st.session_state.active_page == 'calendar':
+        # ======================================
+        # 출결 및 일정 관리 달력
+        # ======================================
+        st.html("""
+        <div class="section-title">📅 출결 & 일정 관리</div>
+        <div class="calendar-caption">
+            백서 일정과 오늘의 할 일을 확인하세요. 출결 기록은 개인 메모이며 공식 출결과 연동되지 않습니다.
         </div>
-        """, unsafe_allow_html=True)
+        """)
 
-    with search_col:
-        search_value = st.text_input(
-            "검색",
-            placeholder="궁금한 내용을 검색해 보세요.",
-            label_visibility="collapsed",
-            key="search_input"
+        st.caption(f'한국시간 기준 오늘 · {korea_today():%Y년 %m월 %d일}')
+        if st.button('오늘로 이동', key='calendar_today'):
+            st.session_state.selected_calendar_date = korea_today()
+            st.session_state.calendar_month = korea_today().replace(day=1)
+            st.rerun()
+        jump = st.date_input('날짜로 바로 이동', value=st.session_state.selected_calendar_date,
+                             key='calendar_jump_' + st.session_state.selected_calendar_date.isoformat())
+        if jump != st.session_state.selected_calendar_date:
+            st.session_state.selected_calendar_date = jump
+            st.session_state.calendar_month = jump.replace(day=1)
+            st.rerun()
+        with st.container(key="calendar_panel"):
+            # 월 이동 및 월 표시
+            month_prev, month_title, month_next = st.columns([1, 5, 1])
+
+            with month_prev:
+                if st.button("‹", key="calendar_prev_month", use_container_width=True):
+                    current_month = st.session_state.calendar_month
+                    if current_month.month == 1:
+                        st.session_state.calendar_month = date(current_month.year - 1, 12, 1)
+                    else:
+                        st.session_state.calendar_month = date(current_month.year, current_month.month - 1, 1)
+                    st.rerun()
+
+            with month_title:
+                st.markdown(
+                    f"<h3 style='text-align:center;color:#19334d;margin:4px 0 15px 0;'>"
+                    f"{st.session_state.calendar_month.year}년 {st.session_state.calendar_month.month}월"
+                    f"</h3>",
+                    unsafe_allow_html=True
+                )
+
+            with month_next:
+                if st.button("›", key="calendar_next_month", use_container_width=True):
+                    current_month = st.session_state.calendar_month
+                    if current_month.month == 12:
+                        st.session_state.calendar_month = date(current_month.year + 1, 1, 1)
+                    else:
+                        st.session_state.calendar_month = date(current_month.year, current_month.month + 1, 1)
+                    st.rerun()
+
+            # 요일 헤더
+            weekday_cols = st.columns(7)
+            weekdays = ["일", "월", "화", "수", "목", "금", "토"]
+            for col, weekday in zip(weekday_cols, weekdays):
+                with col:
+                    st.markdown(f"<div class='calendar-weekday'>{weekday}</div>", unsafe_allow_html=True)
+
+            # 달력 날짜 버튼
+            month_matrix = pycalendar.Calendar(firstweekday=6).monthdayscalendar(
+                st.session_state.calendar_month.year,
+                st.session_state.calendar_month.month
+            )
+
+            for week_index, week in enumerate(month_matrix):
+                day_cols = st.columns(7)
+                for col_index, day_num in enumerate(week):
+                    with day_cols[col_index]:
+                        if day_num == 0:
+                            st.write("")
+                        else:
+                            this_day = date(
+                                st.session_state.calendar_month.year,
+                                st.session_state.calendar_month.month,
+                                day_num
+                            )
+                            day_events = [e for e in events_on(this_day)
+                                          if e.get('mode') != 'info' or this_day.isoformat() in (e['start'], e['end'])]
+                            attendance = st.session_state.attendance_records.get(this_day.isoformat(), {})
+                            marker_parts = []
+                            if day_events:
+                                marker_parts.append("📌")
+                            if attendance:
+                                marker_parts.append("✓")
+                            if this_day == korea_today():
+                                marker_parts.append("오늘")
+                            marker = " ".join(marker_parts)
+                            is_selected = this_day == st.session_state.selected_calendar_date
+                            label = f"{day_num}\n{marker}" if marker else str(day_num)
+                            if st.button(
+                                label,
+                                key=f"calendar_day_{this_day.isoformat()}",
+                                type="primary" if is_selected else "secondary",
+                                use_container_width=True
+                            ):
+                                st.session_state.selected_calendar_date = this_day
+                                st.rerun()
+
+            st.markdown(
+                "<div class='calendar-legend'>📌 일정 있음　 ✓ 출결 기록 있음　 날짜를 누르면 상세 내용을 확인할 수 있습니다.</div>",
+                unsafe_allow_html=True
+            )
+
+            st.divider()
+            selected_day = st.session_state.selected_calendar_date
+            st.markdown(
+                f"<div class='calendar-subtitle'>🗓️ {selected_day.strftime('%Y년 %m월 %d일')} 상세 관리</div>",
+                unsafe_allow_html=True
+            )
+
+            # 날짜별 할 일: 화면 전환으로 위젯이 사라져도 완료 사전은 유지됩니다.
+            tasks = [e for e in events_on(selected_day) if e.get('mode') != 'info']
+            title = '오늘의 할 일' if selected_day == korea_today() else f'{selected_day:%m월 %d일} 할 일'
+            st.subheader(title)
+            if tasks:
+                count = sum(bool(st.session_state.calendar_done.get(task_key(e, selected_day))) for e in tasks)
+                st.progress(count / len(tasks), text=f'{len(tasks)}개 중 {count}개 완료')
+                for item in tasks:
+                    tid = task_key(item, selected_day)
+                    wk = 'todo_' + tid
+                    st.session_state[wk] = st.session_state.calendar_done.get(tid, False)
+                    st.checkbox(item['title'], key=wk, on_change=update_done, args=(tid, wk))
+            else:
+                st.info('선택한 날짜에 등록된 할 일이 없습니다.')
+            st.caption('기간 신청은 한 번 완료, 여러 날의 교육·프로젝트는 날짜별 완료로 관리합니다.')
+            st.divider()
+
+            attendance_col, schedule_col = st.columns(2, gap="medium")
+
+            # 출결 관리
+            with attendance_col:
+                st.markdown("<div class='calendar-subtitle'>✅ 출결 기록</div>", unsafe_allow_html=True)
+                saved_attendance = st.session_state.attendance_records.get(selected_day.isoformat(), {})
+                with st.form("attendance_form_" + selected_day.isoformat(), clear_on_submit=False):
+                    attendance_status = st.selectbox(
+                        "출결 상태",
+                        # 날짜별 위젯 상태
+                        ["미기록", "출석", "지각", "결석", "공결"],
+                        key="attendance_status_" + selected_day.isoformat(), index=["미기록", "출석", "지각", "결석", "공결"].index(saved_attendance.get("status", "미기록"))
+                    )
+                    attendance_memo = st.text_input(
+                        "메모",
+                        key="attendance_memo_" + selected_day.isoformat(),
+                        value=saved_attendance.get("memo", ""),
+                        placeholder="출결 관련 메모를 입력하세요."
+                    )
+                    save_attendance = st.form_submit_button("출결 저장", use_container_width=True)
+
+                if save_attendance:
+                    if attendance_status == "미기록":
+                        st.session_state.attendance_records.pop(selected_day.isoformat(), None)
+                    else:
+                        st.session_state.attendance_records[selected_day.isoformat()] = {
+                            "status": attendance_status,
+                            "memo": attendance_memo
+                        }
+                    st.success("출결 정보가 저장되었습니다.")
+                    st.rerun()
+
+                if saved_attendance:
+                    st.caption(
+                        f"현재 기록: {saved_attendance.get('status', '')}"
+                        + (f" · {saved_attendance.get('memo')}" if saved_attendance.get("memo") else "")
+                    )
+
+            # 일정 등록 및 조회
+            with schedule_col:
+                st.markdown("<div class='calendar-subtitle'>📝 일정 등록</div>", unsafe_allow_html=True)
+                with st.form("schedule_form_" + selected_day.isoformat(), clear_on_submit=True):
+                    event_title = st.text_input("일정 이름", key="title_" + selected_day.isoformat(), placeholder="예: 데이터 분석 강의")
+                    event_type = st.selectbox("일정 유형", ["교육", "과제", "시험", "프로젝트", "개인", "기타"])
+                    event_start = st.date_input("시작일", value=selected_day, key="start_" + selected_day.isoformat())
+                    event_end = st.date_input("종료일", value=selected_day, key="end_" + selected_day.isoformat())
+                    event_memo = st.text_input("상세 내용", placeholder="장소 또는 준비 사항")
+                    save_event = st.form_submit_button("일정 추가", use_container_width=True)
+
+                if save_event:
+                    if not event_title.strip():
+                        st.warning("일정 이름을 입력해 주세요.")
+                    elif event_end < event_start:
+                        st.warning("종료일은 시작일보다 빠를 수 없습니다.")
+                    else:
+                        st.session_state.calendar_events.append({
+                            "id": str(uuid.uuid4()),
+                            "title": event_title.strip(),
+                            "type": event_type,
+                            "start": event_start.isoformat(),
+                            "end": event_end.isoformat(),
+                            "mode": "once",
+                            "official": False,
+                            "memo": event_memo.strip()
+                        })
+                        st.success("일정이 추가되었습니다.")
+                        st.rerun()
+
+            # 선택 날짜 일정 목록 및 삭제
+            selected_events = events_on(selected_day)
+            if selected_events:
+                st.markdown("**등록된 일정**")
+                for event in selected_events:
+                    event_col, delete_col = st.columns([8, 1])
+                    with event_col:
+                        date_range = event["start"] if event["start"] == event["end"] else f"{event['start']} ~ {event['end']}"
+                        st.markdown(
+                            f"📌 **{html.escape(event['title'])}**　`{html.escape(event['type'])}`<br>"
+                            f"<span style='color:#8b9aa6;font-size:12px;'>{date_range}"
+                            f"{' · ' + html.escape(event['memo']) if event['memo'] else ''}</span>",
+                            unsafe_allow_html=True
+                        )
+                        if event.get('official'):
+                            st.caption('출처: ' + event.get('source', '백서') + ' · 시간: ' + event.get('period', '시간 미정'))
+                        if event.get('mode') == 'info':
+                            st.caption('이용 가능 기간 안내 · 매일 완료할 의무가 있는 일정이 아닙니다.')
+                    with delete_col:
+                        if not event.get('official') and st.button("🗑️", key=f"delete_event_{event['id']}"):
+                            st.session_state.calendar_events = [
+                                item for item in st.session_state.calendar_events
+                                if item["id"] != event["id"]
+                            ]
+                            st.rerun()
+            else:
+                st.caption("선택한 날짜에 등록된 일정이 없습니다.")
+
+    else:
+
+        # 인사말 및 검색창
+        title_col, search_col = st.columns(
+            [5, 4]
         )
 
-    # 검색어를 입력하고 Enter를 누르면 질문으로 전달
-    if search_value:
-        st.session_state.pending_prompt = search_value
-        st.session_state.search_input = ""
-        st.rerun()
+        with title_col:
 
-    # ======================================
-    # 환영 카드 / 학습 안내 카드
-    # ======================================
-    card1, card2 = st.columns(2, gap="medium")
-
-    with card1:
-        st.markdown("""
-        <div class="dashboard-card welcome-card">
-            <h3>Welcome back! ✨</h3>
-            <p>
-            AIVLE School 학습 도우미입니다.<br>
-            교육 과정, 강의 내용, 미니프로젝트 등<br>
-            궁금한 내용을 자유롭게 질문해 보세요!
-            </p>
-            <div style="font-size:27px;text-align:right;">
-            📘 🤖
+            st.html("""
+            <div class="greeting">
+                Hello, AIVLE! 👋
             </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with card2:
-        st.markdown("""
-        <div class="dashboard-card result-card">
-            <h3>Learning Guide 📊</h3>
-            <p>
-            여러분의 학습을 도와드릴게요.<br>
-            문서 기반 RAG 시스템을 활용하여<br>
-            필요한 정보를 빠르게 찾아보세요.
-            </p>
-            <div style="font-size:27px;text-align:right;">
-            💡 📚
+            <div class="sub-greeting">
+                오늘도 새로운 지식을 함께 배워봐요.
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """)
 
-    # ======================================
-    # 주요 기능 카드
-    # ======================================
-    st.markdown(
-        '<div class="section-title">Quick Menu</div>',
-        unsafe_allow_html=True
-    )
+        with search_col:
 
-    f1, f2, f3 = st.columns(3, gap="medium")
-
-    with f1:
-        st.markdown("""
-        <div class="feature-card">
-            <div class="feature-icon">📚</div>
-            <div class="feature-title">학습 자료</div>
-            <div class="feature-desc">교육 문서 기반 질문</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with f2:
-        st.markdown("""
-        <div class="feature-card">
-            <div class="feature-icon">🧠</div>
-            <div class="feature-title">학습 Q&A</div>
-            <div class="feature-desc">AI 문서 검색 및 답변</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with f3:
-        st.markdown("""
-        <div class="feature-card">
-            <div class="feature-icon">🚀</div>
-            <div class="feature-title">미니프로젝트</div>
-            <div class="feature-desc">프로젝트 정보 확인</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # ======================================
-    # 채팅 영역
-    # ======================================
-    st.markdown(
-        '<div class="section-title">💬 AI Learning Assistant</div>',
-        unsafe_allow_html=True
-    )
-
-    with st.container(key="chat_panel"):
-
-        st.markdown("""
-        <div style="font-size:17px;font-weight:800;color:#19334d;
-        margin-bottom:12px;">
-        🤖 AIVLE School 학습 도우미
-        </div>
-        <div style="font-size:12px;color:#9baab4;
-        margin-bottom:15px;">
-        궁금한 내용을 질문하면 관련 문서를 찾아 답변해 드립니다.
-        </div>
-        """, unsafe_allow_html=True)
-
-        # 기존 대화 출력
-        if not st.session_state.messages:
-
-            st.info(
-                "안녕하세요! 😊 무엇이 궁금하신가요? "
-                "아래 입력창에 질문을 작성해 주세요."
+            st.text_input(
+                "검색",
+                placeholder="궁금한 내용을 검색해 보세요.",
+                label_visibility="collapsed",
+                key="search_input",
+                on_change=submit_search
             )
 
-        for message in st.session_state.messages:
+        # ======================================
+        # 환영 카드
+        # ======================================
+        card1, card2 = st.columns(2)
 
-            role = (
-                "user"
-                if isinstance(message, HumanMessage)
-                else "assistant"
-            )
+        with card1:
 
-            with st.chat_message(role):
-                st.markdown(message.content)
+            st.html("""
+            <div class="dashboard-card welcome-card">
+                <h3>Welcome back! ✨</h3>
+                <p>
+                    AIVLE School 학습 도우미입니다.<br>
+                    교육 과정, 강의 내용, 미니프로젝트 등<br>
+                    궁금한 내용을 자유롭게 질문해 보세요!
+                </p>
+                <div style="font-size:27px;text-align:right;">
+                    📘 🤖
+                </div>
+            </div>
+            """)
 
-        # 질문 입력
-        with st.form("chat_form", clear_on_submit=True):
+        with card2:
 
-            question = st.text_input(
-                "질문 입력",
-                placeholder="질문을 입력하세요.",
-                label_visibility="collapsed"
-            )
+            st.html("""
+            <div class="dashboard-card result-card">
+                <h3>Learning Guide 📊</h3>
+                <p>
+                    여러분의 학습을 도와드릴게요.<br>
+                    문서 기반 RAG 시스템을 활용하여<br>
+                    필요한 정보를 빠르게 찾아보세요.
+                </p>
+                <div style="font-size:27px;text-align:right;">
+                    💡 📚
+                </div>
+            </div>
+            """)
 
-            submitted = st.form_submit_button(
-                "질문 보내기 ➤",
-                use_container_width=True
-            )
+        # ======================================
+        # 주요 기능 카드
+        # ======================================
+        st.html("""
+        <div class="section-title">
+            Quick Menu
+        </div>
+        """)
+
+        f1, f2, f3 = st.columns(3)
+
+        with f1:
+
+            st.html("""
+            <div class="feature-card">
+                <div class="feature-icon">📚</div>
+                <div class="feature-title">학습 자료</div>
+                <div class="feature-desc">
+                    교육 문서 기반 질문
+                </div>
+            </div>
+            """)
+
+        with f2:
+
+            st.html("""
+            <div class="feature-card">
+                <div class="feature-icon">🧠</div>
+                <div class="feature-title">학습 Q&A</div>
+                <div class="feature-desc">
+                    AI 문서 검색 및 답변
+                </div>
+            </div>
+            """)
+
+        with f3:
+
+            st.html("""
+            <div class="feature-card">
+                <div class="feature-icon">🚀</div>
+                <div class="feature-title">미니프로젝트</div>
+                <div class="feature-desc">
+                    프로젝트 정보 확인
+                </div>
+            </div>
+            """)
+
+        # ======================================
+        # 채팅 영역
+        # ======================================
+        st.html("""
+        <div class="section-title">
+            💬 AI Learning Assistant
+        </div>
+        """)
+
+        with st.container(key="chat_panel"):
+
+            st.html("""
+            <div class="chat-heading">
+                🤖 AIVLE School 학습 도우미
+            </div>
+            <div class="chat-description">
+                궁금한 내용을 질문하면 관련 문서를 찾아
+                답변해 드립니다.
+            </div>
+            """)
+
+            # 최초 안내 메시지
+            if not st.session_state.messages:
+
+                st.info(
+                    "안녕하세요! 😊 무엇이 궁금하신가요? "
+                    "아래 입력창에 질문을 작성해 주세요."
+                )
+
+            # 기존 대화 출력
+            for message in st.session_state.messages:
+
+                role = (
+                    "user"
+                    if message["role"] == "user"
+                    else "assistant"
+                )
+
+                with st.chat_message(role):
+                    st.markdown(message["content"])
+
+            # 채팅 입력창
+            with st.form(
+                "chat_form",
+                clear_on_submit=True
+            ):
+
+                question = st.text_input(
+                    "질문 입력",
+                    placeholder="질문을 입력하세요.",
+                    label_visibility="collapsed"
+                )
+
+                submitted = st.form_submit_button(
+                    "질문 보내기 ➤",
+                    use_container_width=True
+                )
 
 
 # ==========================================
@@ -589,72 +1075,115 @@ with left:
 # ==========================================
 with right:
 
-    # 프로필 카드
-    st.markdown("""
+    # 프로필
+    st.html("""
     <div class="profile-card">
-        <div class="profile-icon">👩🏻‍💻</div>
-        <div class="profile-name">AIVLE Assistant</div>
+        <div class="profile-icon">
+            👩🏻‍💻
+        </div>
+        <div class="profile-name">
+            AIVLE Assistant
+        </div>
         <div class="profile-desc">
-        Your Learning Partner
+            Your Learning Partner
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
-    # 학습 도우미 안내
-    st.markdown("""
-    <div class="info-card">
-        <div class="info-title">📘 학습 도우미 안내</div>
-        <p style="font-size:12px;color:#9aa8b3;line-height:1.8;">
-        AIVLE School 교육 자료를 기반으로<br>
-        질문에 대한 답변을 제공합니다.<br><br>
-        <b style="color:#29445b;">RAG 기반 문서 검색</b><br>
-        관련 문서를 검색하고 답변을 생성합니다.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 추천 질문
-    st.markdown("""
-    <div class="section-title">💡 추천 질문</div>
-    """, unsafe_allow_html=True)
-
-    questions = [
-        "KT 에이블스쿨 지원 자격은?",
-        "미니프로젝트는 어떻게 진행되나요?",
-        "교육 과정은 어떻게 구성되나요?",
-        "수료 기준은 무엇인가요?"
-    ]
-
-    for i, q in enumerate(questions):
-
-        if st.button(
-            q,
-            key=f"recommend_{i}",
-            use_container_width=True
-        ):
-            st.session_state.pending_prompt = q
-            st.rerun()
-
-    # 최근 대화
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="info-card">
-        <div class="info-title">🕒 Recent Activity</div>
-        <p style="font-size:12px;color:#8e9da8;">
-        최근 대화 기록
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if st.session_state.messages:
-
-        for msg in reversed(st.session_state.messages):
-
-            if isinstance(msg, HumanMessage):
-                st.caption("💬 " + msg.content[:30])
+    if st.session_state.active_page == 'calendar':
+        st.subheader('🔔 다가오는 일정')
+        horizon = st.selectbox('미리 보기', [3, 7, 14, 30], index=1, format_func=lambda n: f'{n}일 이내')
+        reminders = []
+        for item in st.session_state.calendar_events:
+            if item.get('mode', 'once') != 'once' or st.session_state.calendar_done.get(task_key(item, korea_today())):
+                continue
+            remaining = (date.fromisoformat(item['end']) - korea_today()).days
+            if -7 <= remaining <= horizon:
+                reminders.append((item['end'], remaining, item))
+        for _, remaining, item in sorted(reminders, key=lambda r: (r[0], r[2]['id'])):
+            badge = f'{-remaining}일 지남' if remaining < 0 else ('오늘' if remaining == 0 else f'D-{remaining}')
+            with st.container(border=True):
+                st.write(f"**{badge} · {item['title']}**")
+                st.caption(item['end'])
+        if not reminders:
+            st.caption('해당 기간에 미완료 마감·행사 일정이 없습니다.')
+        st.caption('최근 7일 미완료 일정 포함 · 앱 안에서 확인하는 알림입니다.')
+        st.divider()
+        st.markdown('**AX 챌린지 자격증**')
+        st.caption('접수일과 시험일은 자료를 받은 뒤 추가합니다.')
+        st.caption('일정은 백서 기준입니다. 변경 사항은 공식 공지를 확인하세요.')
+        st.caption('완료·개인 일정·출결 메모는 현재 접속 세션에서 유지됩니다. 재접속 후 영구 보존은 지원하지 않습니다.')
     else:
-        st.caption("아직 대화 기록이 없습니다.")
+        # 학습 도우미 안내
+        st.html("""
+        <div class="info-card">
+            <div class="info-title">
+                📘 학습 도우미 안내
+            </div>
+            <p>
+                AIVLE School 교육 자료를 기반으로
+                질문에 대한 답변을 제공합니다.<br><br>
+                <b style="color:#29445b;">
+                    RAG 기반 문서 검색
+                </b><br>
+                관련 문서를 검색하고 답변을 생성합니다.
+            </p>
+        </div>
+        """)
+
+        # 추천 질문
+        st.html("""
+        <div class="section-title">
+            💡 추천 질문
+        </div>
+        """)
+
+        questions = [
+            "KT 에이블스쿨 지원 자격은?",
+            "미니프로젝트는 어떻게 진행되나요?",
+            "교육 과정은 어떻게 구성되나요?",
+            "수료 기준은 무엇인가요?"
+        ]
+
+        for i, q in enumerate(questions):
+
+            if st.button(
+                q,
+                key=f"recommend_{i}",
+                use_container_width=True
+            ):
+
+                st.session_state.pending_prompt = q
+                st.rerun()
+
+        # 최근 대화
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.html("""
+        <div class="info-card">
+            <div class="info-title">
+                🕒 Recent Activity
+            </div>
+            <p>
+                최근 대화 기록
+            </p>
+        </div>
+        """)
+
+        recent_questions = [
+            msg["content"]
+            for msg in reversed(st.session_state.messages)
+            if msg["role"] == "user"
+        ]
+
+        if recent_questions:
+
+            for q in recent_questions[:5]:
+                st.caption("💬 " + q[:35])
+
+        else:
+
+            st.caption("아직 대화 기록이 없습니다.")
 
 
 # ==========================================
@@ -662,11 +1191,16 @@ with right:
 # ==========================================
 prompt = None
 
+# 직접 입력한 질문
 if submitted and question.strip():
+
     prompt = question.strip()
 
-elif st.session_state.pending_prompt:
+# 추천 질문 또는 검색창 질문
+elif st.session_state.active_page == "home" and st.session_state.pending_prompt:
+
     prompt = st.session_state.pending_prompt
+
 
 if prompt:
 
@@ -674,31 +1208,36 @@ if prompt:
 
     # 사용자 질문 저장
     st.session_state.messages.append(
-        HumanMessage(content=prompt)
+        {"role": "user", "content": prompt}
     )
 
-    # RAG 답변 생성
     try:
 
-        with st.spinner("관련 문서를 검색하고 있습니다..."):
+        chain = get_chain()
 
-            chain = get_chain()
+        with st.spinner(
+            "관련 문서를 검색하고 있습니다..."
+        ):
 
-            response_stream = chain.stream({
-                "input": prompt
-            })
+            with st.chat_message("assistant"):
 
-            full_response = st.write_stream(
-                response_stream
-            )
+                response_stream = chain.stream({
+                    "input": prompt
+                })
+
+                full_response = st.write_stream(
+                    response_stream
+                )
 
         # AI 답변 저장
         st.session_state.messages.append(
-            AIMessage(content=full_response)
+            {"role": "assistant", "content": full_response}
         )
 
     except Exception as e:
 
-        st.error(f"답변 생성 중 오류가 발생했습니다: {e}")
+        st.error(
+            f"답변 생성 중 오류가 발생했습니다: {e}"
+        )
 
     st.rerun()
