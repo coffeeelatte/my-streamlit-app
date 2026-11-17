@@ -515,8 +515,151 @@ EVENTS = [
 ]
 
 
+# 자격증 일정: 2026년 및 공식 발표가 확인된 2027년 1~3월.
+# 종료일 포함. window는 개인 시험일이 아닌 시행기간이며 할 일 체크에서 제외합니다.
+CERT_CHECKED = '2026-11-17'
+CERT_EVENTS = []
+
+
+def add_cert(cert, attempt, stage, start, end=None, *, url, window=False,
+             note='', evidence='공식', period='시각은 시행기관 공지 확인', completion_id=None):
+    eid = f'cert:{cert}:{attempt}:{stage}:{start}'
+    CERT_EVENTS.append(dict(
+        id=eid, title=f'{cert} · {attempt} · {stage}', start=start, end=end or start,
+        category='자격증', type='자격증', mode='window' if window else 'once',
+        period=period, description=note, memo=note, official=True, cert=cert,
+        source=evidence + ' 일정 · 확인 ' + CERT_CHECKED, source_url=url,
+        evidence=evidence, completion_id=completion_id or eid,
+    ))
+
+
+COS_ROWS = [
+('71','2025-11-17','2026-01-15','2026-01-17'),
+('72','2025-12-22','2026-02-19','2026-02-21'),
+('73','2026-01-19','2026-03-19','2026-03-21'),
+('74','2026-02-16','2026-04-16','2026-04-18'),
+('75','2026-03-16','2026-05-14','2026-05-16'),
+('76','2026-04-20','2026-06-18','2026-06-20'),
+('77','2026-05-18','2026-07-16','2026-07-18'),
+('78','2026-06-15','2026-08-13','2026-08-15'),
+('79','2026-07-20','2026-09-17','2026-09-19'),
+('80','2026-08-17','2026-10-15','2026-10-17'),
+('81','2026-09-21','2026-11-19','2026-11-21'),
+('82','2026-10-19','2026-12-17','2026-12-19'),
+('83','2026-11-23','2027-01-21','2027-01-23'),
+('84','2026-12-28','2027-02-25','2027-02-27'),
+('85','2027-01-18','2027-03-18','2027-03-20'),
+]
+for attempt, start, end, exam in COS_ROWS:
+    url = 'https://www.ybmit.com/cos_pro/cos_pro_info.jsp'
+    add_cert('COS Pro 1급', attempt+'회', '접수', start, end, url=url)
+    add_cert('COS Pro 1급', attempt+'회', '시험', exam, url=url, period='14:00')
+
+
+def add_round(cert, attempt, row, url, written_window=True, note=''):
+    # 필기 접수 시작/끝, 필기 시작/끝, 실기 접수 시작/끝, 실기 시작/끝
+    a,b,c,d,e,f,g,h = ['2026-'+v for v in row.split()]
+    add_cert(cert, attempt, '필기 접수', a, b, url=url, note=note)
+    add_cert(cert, attempt, '필기 시험', c, d, url=url, window=written_window, note=note)
+    if e == '2026-09-21':
+        # 공휴일을 접수기간으로 잘못 포함하지 않도록 두 구간으로 표시합니다.
+        key = cert+attempt+'실기접수'
+        add_cert(cert, attempt, '실기 접수 1차 구간', e, '2026-09-23', url=url, completion_id=key)
+        add_cert(cert, attempt, '실기 접수 2차 구간', '2026-09-28', url=url, completion_id=key)
+    else:
+        add_cert(cert, attempt, '실기 접수', e, f, url=url, note=note)
+    add_cert(cert, attempt, '실기 시험', g, h, url=url, window=(g != h), note=note)
+
+
+for attempt, row in [
+('12회','03-03 03-09 04-04 04-04 05-18 05-22 06-20 06-20'),
+('13회','08-03 08-07 09-05 09-05 10-26 10-30 11-28 11-28')]:
+    add_round('빅데이터분석기사', attempt, row,
+              'https://mods.go.kr/menu.es?mid=a10411020100', written_window=False)
+
+ARTICLE_ROWS = {
+'1회':'01-12 01-15 01-30 03-03 03-23 03-26 04-18 05-06',
+'2회':'04-20 04-23 05-09 05-29 06-22 06-25 07-18 08-05',
+'3회':'07-20 07-23 08-07 09-01 09-21 09-28 10-24 11-15',
+}
+for cert, code, rounds in [
+('정보처리기사','1320',['1회','2회','3회']),
+('정보처리산업기사','2290',['1회','2회','3회']),
+('컴퓨터시스템기사','1998',['1회','3회'])]:
+    for attempt in rounds:
+        row = ARTICLE_ROWS[attempt]
+        if cert == '정보처리산업기사' and attempt == '3회':
+            row = row.replace('11-15','11-13')
+        note = ('구 전자계산기기사·전자계산기조직응용기사 통합 종목. 변경된 명칭의 AX 인정 여부는 교육 운영진 확인.'
+                if cert == '컴퓨터시스템기사' else '')
+        add_round(cert, attempt, row,
+                  f'https://www.q-net.or.kr/crf005.do?id=crf00503s02&jmCd={code}&jmInfoDivCcd=B0', note=note)
+
+for attempt, row in [
+('1회','01-06 01-09 01-20 01-24 02-02 02-05 03-14 04-05'),
+('2회','03-16 03-20 04-04 04-09 04-27 04-30 05-30 06-14'),
+('3회','06-08 06-11 06-27 07-02 07-27 07-30 08-29 09-16'),
+('4회','08-24 08-27 09-16 09-21 10-12 10-15 11-14 12-02')]:
+    add_round('프로그래밍기능사', attempt, row,
+              'https://www.q-net.or.kr/crf005.do?id=crf00503s02&jmCd=6921&jmInfoDivCcd=A0',
+              note='구 정보처리기능사. 변경된 명칭의 AX 인정 여부는 교육 운영진 확인.')
+
+TECH_ROWS = {
+'138회':'01-06 01-09 02-07 03-03 03-06 03-30 04-02 05-02 05-16',
+'139회':'04-13 04-16 05-16 06-08 06-11 06-29 07-02 08-01 08-15',
+'140회':'07-13 07-16 08-22 08-31 09-03 10-12 10-15 11-14 11-28',
+}
+for cert, code, rounds in [('정보관리기술사','0601',list(TECH_ROWS)),
+                            ('컴퓨터시스템응용기술사','0622',['138회','140회'])]:
+    url = f'https://www.q-net.or.kr/crf005.do?id=crf00503s02&jmCd={code}'
+    for attempt in rounds:
+        a,b,c,d,e,f,g,h,i = ['2026-'+v for v in TECH_ROWS[attempt].split()]
+        add_cert(cert,attempt,'필기 접수',a,b,url=url)
+        add_cert(cert,attempt,'필기 시험',c,url=url)
+        for label, start, end in [('1차',d,e),('2차',f,g)]:
+            add_cert(cert,attempt,'면접 접수 '+label,start,end,url=url,
+                     note='필기 면제·합격 등 응시자 구분에 따라 적용되는 접수기간이 다릅니다.',
+                     completion_id=cert+attempt+'면접접수')
+        add_cert(cert,attempt,'면접 시험',h,i,url=url,window=True)
+
+for cert in ['정보보안기사','정보보안산업기사']:
+    for attempt, row in [
+    ('1회','01-26 01-29 02-09 03-06 03-16 03-19 04-11 04-26'),
+    ('2회','05-11 05-14 05-22 06-15 06-22 06-25 07-25 08-09'),
+    ('4회','08-31 09-03 09-14 10-08 10-19 10-22 11-14 11-29')]:
+        add_round(cert,attempt,row,'https://www.cq.or.kr/qh_quagm03_001.do',
+                  note='연간 시행계획의 기간입니다. 종목별 실제 응시일은 회차별 공고·수험표로 확인하세요.')
+
+for attempt, exam in [('1차','2026-08-08'),('2차','2026-10-31')]:
+    add_cert('소프트웨어 보안약점 진단원',attempt,'시험',exam,
+             url='https://www.kisa.or.kr/401/form?postSeq=3681',
+             note='기본교육 이수 등 응시요건 확인 필요. 접수기간은 확인되지 않아 미등록.')
+
+for attempt, deadline, exam, url in [
+('63회','2026-05-15','2026-05-30','https://www.ipmc.kr/board/read.jsp?code=notice&id=1941706&ln=board&page=13'),
+('64회','2026-11-06','2026-11-21','https://www.ipmc.kr/board/read.jsp?code=notice&id=1966256')]:
+    for stage, day in [('접수 마감',deadline),('필기 시험',exam)]:
+        add_cert('IT-PMP',attempt,stage,day,url=url,evidence='교육기관 게재 공고',
+                 note='시행기관 원문 미대조. 접수 시작일 미확인. 기본 표시에서 제외.')
+    if attempt == '63회':
+        add_cert('IT-PMP',attempt,'면접 시험','2026-06-20',url=url,evidence='교육기관 게재 공고')
+
+CERT_NAMES = sorted({e['cert'] for e in CERT_EVENTS})
+DEFAULT_CERTS = [name for name in CERT_NAMES if name != 'IT-PMP']
+
+
+def remember_cert_filter():
+    st.session_state.cert_preferences = list(st.session_state.cert_filter)
+
+
+def visible_events():
+    chosen = st.session_state.get('cert_preferences', DEFAULT_CERTS)
+    return [e for e in st.session_state.calendar_events
+            if not e.get('cert') or e['cert'] in chosen]
+
+
 def task_key(item, day):
-    return item['id'] + (':' + day.isoformat() if item.get('mode') == 'daily' else '')
+    return item.get('completion_id', item['id']) + (':' + day.isoformat() if item.get('mode') == 'daily' else '')
 
 
 def update_done(task_id, widget_key):
@@ -549,6 +692,12 @@ if "calendar_events" not in st.session_state:
         for e in EVENTS
     ]
 
+# 공식 시험 데이터만 갱신하며 개인 일정과 완료 기록은 유지합니다.
+st.session_state.calendar_events = [
+    e for e in st.session_state.calendar_events if not e.get('cert')
+] + CERT_EVENTS
+st.session_state.setdefault('cert_preferences', DEFAULT_CERTS.copy())
+
 if "attendance_records" not in st.session_state:
     st.session_state.attendance_records = {}
 
@@ -556,7 +705,7 @@ if "attendance_records" not in st.session_state:
 def events_on(day):
     """해당 날짜에 진행 중인 일정 목록을 반환합니다."""
     result = []
-    for event in st.session_state.calendar_events:
+    for event in visible_events():
         start = date.fromisoformat(event["start"])
         end = date.fromisoformat(event["end"])
         if start <= day <= end:
@@ -686,6 +835,10 @@ with left:
         </div>
         """)
 
+        st.multiselect('표시할 자격증', CERT_NAMES,
+                       default=st.session_state.cert_preferences, key='cert_filter',
+                       on_change=remember_cert_filter)
+        st.caption('접수기간은 한 번 완료 처리합니다. 시험 시행기간은 개인 시험일이 아니므로 할 일 체크에서 제외됩니다.')
         st.caption(f'한국시간 기준 오늘 · {korea_today():%Y년 %m월 %d일}')
         if st.button('오늘로 이동', key='calendar_today'):
             st.session_state.selected_calendar_date = korea_today()
@@ -787,7 +940,7 @@ with left:
             )
 
             # 날짜별 할 일: 화면 전환으로 위젯이 사라져도 완료 사전은 유지됩니다.
-            tasks = [e for e in events_on(selected_day) if e.get('mode') != 'info']
+            tasks = [e for e in events_on(selected_day) if e.get('mode') not in ('info', 'window')]
             title = '오늘의 할 일' if selected_day == korea_today() else f'{selected_day:%m월 %d일} 할 일'
             st.subheader(title)
             if tasks:
@@ -887,6 +1040,10 @@ with left:
                         )
                         if event.get('official'):
                             st.caption('출처: ' + event.get('source', '백서') + ' · 시간: ' + event.get('period', '시간 미정'))
+                        if event.get('source_url'):
+                            st.markdown(f"[일정 출처 열기]({event['source_url']})")
+                        if event.get('mode') == 'window':
+                            st.caption('시험 시행기간 안내 · 실제 응시일은 수험표 기준입니다. 확정한 개인 시험일은 개인 일정으로 등록하세요.')
                         if event.get('mode') == 'info':
                             st.caption('이용 가능 기간 안내 · 매일 완료할 의무가 있는 일정이 아닙니다.')
                     with delete_col:
@@ -1094,7 +1251,7 @@ with right:
         st.subheader('🔔 다가오는 일정')
         horizon = st.selectbox('미리 보기', [3, 7, 14, 30], index=1, format_func=lambda n: f'{n}일 이내')
         reminders = []
-        for item in st.session_state.calendar_events:
+        for item in visible_events():
             if item.get('mode', 'once') != 'once' or st.session_state.calendar_done.get(task_key(item, korea_today())):
                 continue
             remaining = (date.fromisoformat(item['end']) - korea_today()).days
@@ -1110,8 +1267,22 @@ with right:
         st.caption('최근 7일 미완료 일정 포함 · 앱 안에서 확인하는 알림입니다.')
         st.divider()
         st.markdown('**AX 챌린지 자격증**')
-        st.caption('접수일과 시험일은 자료를 받은 뒤 추가합니다.')
-        st.caption('일정은 백서 기준입니다. 변경 사항은 공식 공지를 확인하세요.')
+        st.caption('2026년 시험·접수 일정과 공식 발표가 확인된 2027년 1~3월 COS Pro 일정을 제공합니다. 확인 기준: ' + CERT_CHECKED)
+        with st.expander('예약형 시험 및 미등록 자격증 안내'):
+            st.markdown('[Azure Associate·Expert 시험 예약](https://learn.microsoft.com/en-us/credentials/certifications/register-schedule-exam)')
+            st.write('Azure는 개별 예약형입니다. 예약한 시험일을 개인 일정으로 추가하세요.')
+            st.write('ADP·DAP는 시행기관 원문 확인 전으로 캘린더에 등록하지 않았습니다. 아래 날짜는 참고용이며 확정 일정으로 사용하지 않습니다.')
+            st.table([
+                {'자격증':'ADP 36회','필기 접수':'2026-01-05~01-09','필기':'02-07','실기 접수':'03-30~04-03','실기':'05-02'},
+                {'자격증':'ADP 37회','필기 접수':'2026-07-06~07-10','필기':'08-08','실기 접수':'09-14~09-18','실기':'10-17'},
+                {'자격증':'DAP 65회','접수':'2026-02-09~02-13','시험':'03-21'},
+                {'자격증':'DAP 66회','접수':'2026-08-14~08-21','시험':'09-19'},
+            ])
+            st.markdown('[ADP 참고 출처](https://exam.martius.kr/licenses/adp/schedule) · [DAP 참고 출처](https://cert.statnorth.kr/certs/data-exams) · [시행기관 DataQ](https://www.dataq.or.kr/)')
+            st.write('IT-PMP는 교육기관 게재 공고를 근거로 합니다. 필요하면 자격증 필터에서 선택하세요. 시행기관 원문은 미대조입니다.')
+            st.write('구 정보처리기능사는 프로그래밍기능사, 구 전자계산기기사·전자계산기조직응용기사는 컴퓨터시스템기사 명칭으로 표시합니다. 변경 명칭의 AX 인정 여부는 교육 운영진에게 확인하세요.')
+            st.write('추가 9종의 AX 적용일은 제공받은 안내 기준 2026-11-09입니다. 시험 일정 표시와 지원금·공결 인정 여부는 별개입니다.')
+        st.caption('교육 일정은 백서, 시험 일정은 각 일정의 출처 기준입니다. 접수 전 최신 공지를 확인하세요.')
         st.caption('완료·개인 일정·출결 메모는 현재 접속 세션에서 유지됩니다. 재접속 후 영구 보존은 지원하지 않습니다.')
     else:
         # 학습 도우미 안내
