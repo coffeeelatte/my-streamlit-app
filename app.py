@@ -644,6 +644,26 @@ for attempt, deadline, exam, url in [
     if attempt == '63회':
         add_cert('IT-PMP',attempt,'면접 시험','2026-06-20',url=url,evidence='교육기관 게재 공고')
 
+# 공식 문서 대조: 사용자 확인(2026-11-17). 원문 파일 자체는 앱에 포함하지 않습니다.
+for attempt, row in [
+    ('36회', '01-05 01-09 02-07 02-07 03-30 04-03 05-02 05-02'),
+    ('37회', '07-06 07-10 08-08 08-08 09-14 09-18 10-17 10-17'),
+]:
+    add_round('데이터분석전문가(ADP)', attempt, row,
+              'https://www.dataq.or.kr/', written_window=False)
+for attempt, start, end, exam in [
+    ('65회', '2026-02-09', '2026-02-13', '2026-03-21'),
+    ('66회', '2026-08-14', '2026-08-21', '2026-09-19'),
+]:
+    add_cert('데이터아키텍처전문가(DAP)', attempt, '접수', start, end,
+             url='https://www.dataq.or.kr/')
+    add_cert('데이터아키텍처전문가(DAP)', attempt, '시험', exam,
+             url='https://www.dataq.or.kr/')
+for item in CERT_EVENTS:
+    if item['cert'] in ('데이터분석전문가(ADP)', '데이터아키텍처전문가(DAP)'):
+        item['source'] = 'DataQ 공식 문서 · 사용자 대조 확인 2026-11-17'
+        item['evidence'] = '공식 문서 · 사용자 확인'
+
 CERT_NAMES = sorted({e['cert'] for e in CERT_EVENTS})
 DEFAULT_CERTS = [name for name in CERT_NAMES if name != 'IT-PMP']
 
@@ -838,7 +858,7 @@ with left:
         st.multiselect('표시할 자격증', CERT_NAMES,
                        default=st.session_state.cert_preferences, key='cert_filter',
                        on_change=remember_cert_filter)
-        st.caption('접수기간은 한 번 완료 처리합니다. 시험 시행기간은 개인 시험일이 아니므로 할 일 체크에서 제외됩니다.')
+        st.caption('자격증은 참고 일정으로 표시하며 할 일에 자동 등록하지 않습니다. 응시할 시험은 개인 일정으로 추가하세요.')
         st.caption(f'한국시간 기준 오늘 · {korea_today():%Y년 %m월 %d일}')
         if st.button('오늘로 이동', key='calendar_today'):
             st.session_state.selected_calendar_date = korea_today()
@@ -940,7 +960,8 @@ with left:
             )
 
             # 날짜별 할 일: 화면 전환으로 위젯이 사라져도 완료 사전은 유지됩니다.
-            tasks = [e for e in events_on(selected_day) if e.get('mode') not in ('info', 'window')]
+            tasks = [e for e in events_on(selected_day)
+                     if not e.get('cert') and e.get('mode') not in ('info', 'window')]
             title = '오늘의 할 일' if selected_day == korea_today() else f'{selected_day:%m월 %d일} 할 일'
             st.subheader(title)
             if tasks:
@@ -955,6 +976,23 @@ with left:
                 st.info('선택한 날짜에 등록된 할 일이 없습니다.')
             st.caption('기간 신청은 한 번 완료, 여러 날의 교육·프로젝트는 날짜별 완료로 관리합니다.')
             st.divider()
+            st.subheader('자격증 접수·시험 안내')
+            cert_notices = [e for e in events_on(selected_day) if e.get('cert')]
+            st.caption('선택한 날짜의 참고 정보입니다. 개인 응시 일정이나 완료 체크 대상이 아닙니다.')
+            if cert_notices:
+                for item in cert_notices:
+                    with st.container(border=True):
+                        st.write('**' + item['title'] + '**')
+                        st.caption(item['start'] + (' ~ ' + item['end'] if item['start'] != item['end'] else ''))
+                        if item.get('mode') == 'window':
+                            st.caption('시행기간 안내 · 개인 응시일은 수험표에서 확인하세요.')
+                        if item.get('memo'):
+                            st.caption(item['memo'])
+                        st.markdown(f"[접수·시험 안내 확인]({item['source_url']})")
+            else:
+                st.caption('선택한 자격증의 접수·시험 안내가 없습니다.')
+            st.divider()
+
 
             attendance_col, schedule_col = st.columns(2, gap="medium")
 
@@ -1025,7 +1063,7 @@ with left:
                         st.rerun()
 
             # 선택 날짜 일정 목록 및 삭제
-            selected_events = events_on(selected_day)
+            selected_events = [e for e in events_on(selected_day) if not e.get('cert')]
             if selected_events:
                 st.markdown("**등록된 일정**")
                 for event in selected_events:
@@ -1252,7 +1290,7 @@ with right:
         horizon = st.selectbox('미리 보기', [3, 7, 14, 30], index=1, format_func=lambda n: f'{n}일 이내')
         reminders = []
         for item in visible_events():
-            if item.get('mode', 'once') != 'once' or st.session_state.calendar_done.get(task_key(item, korea_today())):
+            if item.get('cert') or item.get('mode', 'once') != 'once' or st.session_state.calendar_done.get(task_key(item, korea_today())):
                 continue
             remaining = (date.fromisoformat(item['end']) - korea_today()).days
             if -7 <= remaining <= horizon:
@@ -1268,17 +1306,10 @@ with right:
         st.divider()
         st.markdown('**AX 챌린지 자격증**')
         st.caption('2026년 시험·접수 일정과 공식 발표가 확인된 2027년 1~3월 COS Pro 일정을 제공합니다. 확인 기준: ' + CERT_CHECKED)
-        with st.expander('예약형 시험 및 미등록 자격증 안내'):
+        with st.expander('자격증 일정 이용 안내'):
             st.markdown('[Azure Associate·Expert 시험 예약](https://learn.microsoft.com/en-us/credentials/certifications/register-schedule-exam)')
             st.write('Azure는 개별 예약형입니다. 예약한 시험일을 개인 일정으로 추가하세요.')
-            st.write('ADP·DAP는 시행기관 원문 확인 전으로 캘린더에 등록하지 않았습니다. 아래 날짜는 참고용이며 확정 일정으로 사용하지 않습니다.')
-            st.table([
-                {'자격증':'ADP 36회','필기 접수':'2026-01-05~01-09','필기':'02-07','실기 접수':'03-30~04-03','실기':'05-02'},
-                {'자격증':'ADP 37회','필기 접수':'2026-07-06~07-10','필기':'08-08','실기 접수':'09-14~09-18','실기':'10-17'},
-                {'자격증':'DAP 65회','접수':'2026-02-09~02-13','시험':'03-21'},
-                {'자격증':'DAP 66회','접수':'2026-08-14~08-21','시험':'09-19'},
-            ])
-            st.markdown('[ADP 참고 출처](https://exam.martius.kr/licenses/adp/schedule) · [DAP 참고 출처](https://cert.statnorth.kr/certs/data-exams) · [시행기관 DataQ](https://www.dataq.or.kr/)')
+            st.caption('ADP·DAP 일정은 사용자가 공식 문서와 대조해 확인한 내용입니다.')
             st.write('IT-PMP는 교육기관 게재 공고를 근거로 합니다. 필요하면 자격증 필터에서 선택하세요. 시행기관 원문은 미대조입니다.')
             st.write('구 정보처리기능사는 프로그래밍기능사, 구 전자계산기기사·전자계산기조직응용기사는 컴퓨터시스템기사 명칭으로 표시합니다. 변경 명칭의 AX 인정 여부는 교육 운영진에게 확인하세요.')
             st.write('추가 9종의 AX 적용일은 제공받은 안내 기준 2026-11-09입니다. 시험 일정 표시와 지원금·공결 인정 여부는 별개입니다.')
