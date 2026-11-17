@@ -397,6 +397,19 @@ hr {
     }
 }
 
+
+.today-card { background: linear-gradient(115deg, #ffffff 0%, #def4ee 100%); border: 1px solid #c8e6df; border-radius: 24px; padding: 28px 32px; margin: 8px 0 12px; box-shadow: 0 8px 28px rgba(37,95,87,.05); display: flex; align-items: center; gap: 28px; }
+.today-stamp { min-width: 94px; padding: 12px; border-radius: 18px; background: #fff; text-align: center; box-shadow: 0 4px 14px rgba(37,95,87,.06); }
+.today-month { color: #41877b; font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+.today-number { color: #116e61; font-size: 46px; font-weight: 800; line-height: 1.2; }
+.today-weekday { color: #55746d; font-size: 13px; }
+.today-eyebrow { color: #537a72; font-size: 13px; letter-spacing: .7px; margin-bottom: 8px; }
+.today-heading { color: #23483f; font-size: clamp(21px, 2.1vw, 30px); font-weight: 750; line-height: 1.4; margin: 0 0 9px; }
+.today-heading strong { color: #008675; }
+.today-cheer { color: #48675f; font-size: 15px; margin: 0 0 12px; line-height: 1.6; }
+.today-basis { color: #718c85; font-size: 11px; }
+@media(max-width: 600px) { .today-card { padding: 20px 16px; gap: 15px; } .today-stamp { min-width: 72px; } .today-number { font-size: 36px; } }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -918,16 +931,45 @@ with left:
         </div>
         """)
 
-        st.caption(f'한국시간 기준 오늘 · {korea_today():%Y년 %m월 %d일}')
+        # 백서 1.5.2: 10기 개강 2026-09-29. 출석일수가 아닌 달력 경과일입니다.
+        today = korea_today()
+        course_start = date(2026, 9, 29)
+        course_end = date(2027, 3, 5)
+        elapsed_day = (today - course_start).days + 1
+        if today < course_start:
+            hero_heading = f'교육 시작까지 <strong>{(course_start - today).days}일</strong> 남았어요.'
+        elif today > course_end:
+            hero_heading = '교육을 마친 여러분의 <strong>다음 도전</strong>을 응원해요.'
+        else:
+            hero_heading = f'오늘은 교육 <strong>{elapsed_day}일차</strong>입니다.'
+        cheers = [
+            '오늘 배운 것 하나, 내 것으로 만들어봐요.',
+            '막혔던 문제도 한 단계씩 풀어가면 돼요.',
+            '작은 실습 하나가 다음 프로젝트의 밑바탕이 됩니다.',
+            '오늘의 목표 하나부터 차근차근 시작해봐요.',
+            '어제보다 하나 더 이해하는 하루를 만들어봐요.',
+            '잠깐 쉬어가도 좋아요. 다시 시작할 힘을 채워봐요.',
+            '함께 묻고, 함께 풀면서 한 걸음 더 나아가요.',
+        ]
+        weekday = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'][today.weekday()]
+        st.html(f"""
+        <section class="today-card" aria-label="오늘의 학습 응원">
+          <div class="today-stamp">
+            <div class="today-month">{today.year} · {today.month:02d}</div>
+            <div class="today-number">{today.day:02d}</div>
+            <div class="today-weekday">{weekday}</div>
+          </div>
+          <div>
+            <div class="today-eyebrow">AIVLE SCHOOL · 오늘의 한 걸음</div>
+            <h2 class="today-heading">{hero_heading}</h2>
+            <p class="today-cheer">{cheers[today.toordinal() % len(cheers)]}</p>
+            <div class="today-basis">한국시간 기준 · 2026.09.29 개강 · 일차는 주말·공휴일을 포함한 경과일</div>
+          </div>
+        </section>
+        """)
         if st.button('오늘로 이동', key='calendar_today'):
-            st.session_state.selected_calendar_date = korea_today()
-            st.session_state.calendar_month = korea_today().replace(day=1)
-            st.rerun()
-        jump = st.date_input('날짜로 바로 이동', value=st.session_state.selected_calendar_date,
-                             key='calendar_jump_' + st.session_state.selected_calendar_date.isoformat())
-        if jump != st.session_state.selected_calendar_date:
-            st.session_state.selected_calendar_date = jump
-            st.session_state.calendar_month = jump.replace(day=1)
+            st.session_state.selected_calendar_date = today
+            st.session_state.calendar_month = today.replace(day=1)
             st.rerun()
         with st.container(key="calendar_panel"):
             # 월 이동 및 월 표시
