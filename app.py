@@ -1,2819 +1,3623 @@
-
 import streamlit as st
-import calendar
-import io
-import os
+import calendar as pycalendar
 import uuid
 from datetime import date, datetime
-from html import escape
-
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_chroma import Chroma
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from zoneinfo import ZoneInfo
+import html
 from operator import itemgetter
 
 
-# =========================================================
-# 1. 기본 설정
-# =========================================================
-
+# ==========================================
+# 1. 페이지 설정
+# ==========================================
 st.set_page_config(
-    page_title="AIVLE School Learning Assistant",
+    page_title="AIVLE School 학습 도우미",
     page_icon="📘",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-CHROMA_DIR = "chroma_db"
-COLLECTION = "aivle_docs"
 
-
-# =========================================================
+# ==========================================
 # 2. CSS 디자인
-# =========================================================
-
+# ==========================================
 st.markdown("""
 <style>
 
 /* 전체 배경 */
 .stApp {
-    background: linear-gradient(120deg, #f5fbfc, #eaf7f8);
-    color: #193653;
-    font-family: 'Malgun Gothic', sans-serif;
+    background-color: #edf6f7;
 }
 
-/* 기본 여백: Streamlit 상단 툴바와 본문이 겹치지 않도록 공통 적용 */
-.block-container,
-.main .block-container,
-div[data-testid="stAppViewBlockContainer"],
-.stAppViewBlockContainer {
-    padding-top: 4.25rem !important;
-    padding-bottom: 2rem !important;
-    max-width: 100% !important;
+/* 전체 여백 */
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+    max-width: 1500px;
 }
 
-/* Streamlit 상단 헤더 공간 확보 */
-header[data-testid="stHeader"] {
-    height: 3rem;
-    background: transparent;
+/* 기본 메뉴 및 푸터 숨기기 */
+#MainMenu, footer {
+    visibility: hidden;
+}
+
+/* 상단 헤더 유지 - 사이드바 버튼 보호 */
+.stAppHeader {
+    background-color: transparent;
 }
 
 /* 사이드바 */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #55bdc5, #63c6cc);
-    min-width: 210px;
-    max-width: 210px;
+    background-color: #78c5cd;
+    min-width: 230px;
 }
 
-section[data-testid="stSidebar"] * {
+/* 사이드바 내부 여백 */
+section[data-testid="stSidebar"] > div {
+    padding: 25px 15px;
+}
+
+/* 사이드바 글자 */
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] label {
     color: white;
 }
 
-/* 바로가기 링크: 흰색 카드 위에 진한 글씨가 항상 보이도록 고정 */
-section[data-testid="stSidebar"] a.sidebar-shortcut-link,
-section[data-testid="stSidebar"] a.sidebar-shortcut-link:visited {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    gap: 6px !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    min-height: 48px !important;
-    padding: 10px 11px !important;
-    margin: 7px 0 !important;
-    border-radius: 11px !important;
-    border: 1px solid rgba(255,255,255,0.85) !important;
-    background: #ffffff !important;
-    color: #173653 !important;
-    -webkit-text-fill-color: #173653 !important;
-    text-decoration: none !important;
-    font-size: 12px !important;
-    font-weight: 800 !important;
-    line-height: 1.35 !important;
-    opacity: 1 !important;
-    box-shadow: 0 2px 7px rgba(25,70,90,0.08) !important;
-}
-section[data-testid="stSidebar"] a.sidebar-shortcut-link span {
-    color: #173653 !important;
-    -webkit-text-fill-color: #173653 !important;
-    opacity: 1 !important;
-}
-section[data-testid="stSidebar"] .shortcut-label {
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    min-width: 0 !important;
-}
-section[data-testid="stSidebar"] .shortcut-arrow {
-    flex: 0 0 auto !important;
-    color: #159eae !important;
-    -webkit-text-fill-color: #159eae !important;
-}
-section[data-testid="stSidebar"] a.sidebar-shortcut-link:hover {
-    background: #eafafa !important;
-    color: #087f8b !important;
-    -webkit-text-fill-color: #087f8b !important;
+/* 로고 */
+.logo-area {
+    background-color: rgba(255,255,255,0.95);
+    border-radius: 18px;
+    padding: 17px 10px;
+    margin-bottom: 30px;
+    text-align: center;
 }
 
-/* 사이드바 메뉴 버튼 */
-section[data-testid="stSidebar"] div.stButton > button {
-    width: 100%;
-    min-height: 43px;
-    text-align: left;
-    padding: 8px 13px;
-    margin: 2px 0;
-    border: 1px solid transparent;
-    border-radius: 12px;
-    background: transparent;
-    color: white !important;
+.logo-area p {
+    color: #9aa8b0 !important;
+    font-size: 11px;
+    margin-bottom: 0;
+}
+
+/* 사이드바 메뉴 */
+.menu-item {
+    color: white;
+    padding: 13px 15px;
+    margin: 8px 0;
+    border-radius: 13px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.menu-active {
+    background-color: rgba(255,255,255,0.27);
+}
+
+/* 메인 인사말 */
+.greeting {
+    font-size: 29px;
+    font-weight: 800;
+    color: #19334d;
+    margin-bottom: 5px;
+}
+
+.sub-greeting {
+    color: #91a2ae;
+    font-size: 13px;
+    margin-bottom: 20px;
+}
+
+/* 검색창 */
+div[data-testid="stTextInput"] input {
+    border: none;
+    border-radius: 15px;
+    background-color: white;
+    min-height: 45px;
+    box-shadow: 0 3px 15px rgba(30,60,80,0.07);
+}
+
+/* 대시보드 카드 */
+.dashboard-card {
+    border-radius: 23px;
+    padding: 24px;
+    min-height: 155px;
+    box-shadow: 0 5px 20px rgba(50,80,100,0.07);
+    margin-bottom: 18px;
+    box-sizing: border-box;
+}
+
+.welcome-card {
+    background: #43aebe;
+    color: white;
+}
+
+.result-card {
+    background: #83b3f5;
+    color: white;
+}
+
+.dashboard-card h3 {
+    font-size: 20px;
+    margin: 0 0 12px 0;
+    color: white;
+}
+
+.dashboard-card p {
+    font-size: 13px;
+    line-height: 1.7;
+    color: white;
+}
+
+/* 기능 카드 */
+.feature-card {
+    background-color: white;
+    border-radius: 20px;
+    padding: 17px 12px;
+    box-shadow: 0 5px 18px rgba(50,80,100,0.06);
+    min-height: 105px;
+    text-align: center;
+    color: #263c54;
+    box-sizing: border-box;
+}
+
+.feature-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+}
+
+.feature-title {
     font-size: 15px;
     font-weight: 800;
-    box-shadow: none;
 }
 
-section[data-testid="stSidebar"] div.stButton > button:hover {
-    background: rgba(255,255,255,0.22);
-    border-color: rgba(255,255,255,0.35);
-    color: white !important;
-}
-
-/* 선택된 메뉴: Streamlit 버전에 따라 kind / data-testid가 달라질 수 있어 함께 지정 */
-section[data-testid="stSidebar"] div.stButton > button[kind="primary"],
-section[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"],
-section[data-testid="stSidebar"] div.stButton > [data-testid="stBaseButton-primary"] {
-    background: #eafafa !important;
-    border: 1px solid #eafafa !important;
-    color: #193653 !important;
-}
-
-/* 선택된 메뉴 안쪽의 p, span 등에도 글자색을 직접 적용
-   (사이드바 전체 흰색 글자 규칙이 선택 메뉴에 상속되는 현상 방지) */
-section[data-testid="stSidebar"] div.stButton > button[kind="primary"] *,
-section[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"] *,
-section[data-testid="stSidebar"] div.stButton > [data-testid="stBaseButton-primary"] * {
-    color: #193653 !important;
-    -webkit-text-fill-color: #193653 !important;
-}
-
-/* 비선택 메뉴는 흰색 글자 유지 */
-section[data-testid="stSidebar"] div.stButton > button[kind="secondary"],
-section[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-secondary"] {
-    color: #ffffff !important;
-}
-section[data-testid="stSidebar"] div.stButton > button[kind="secondary"] *,
-section[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-secondary"] * {
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
-}
-
-/* 로고는 사이드바 기본 글자색 규칙의 영향을 받지 않도록 고정 */
-.logo-box .logo-main {
-    color: #173956 !important;
-}
-.logo-box .logo-sub {
-    color: #28b7c0 !important;
-}
-
-/* 사이드바 로고 */
-.logo-box {
-    background: white;
-    border-radius: 15px;
-    padding: 17px 8px;
-    text-align: center;
-    margin-bottom: 25px;
-}
-
-.logo-main {
-    color: #173956;
-    font-size: 27px;
-    font-weight: 900;
-}
-
-.logo-sub {
-    color: #28b7c0;
-    font-size: 12px;
-}
-
-/* 프로필 설정 화면 */
-div[data-testid="stForm"] {
-    background: rgba(255,255,255,0.72);
-    border: 1px solid #dce9ed;
-    border-radius: 16px;
-    padding: 20px 22px;
-    box-shadow: 0 5px 18px rgba(31,82,105,0.06);
-}
-div[data-testid="stForm"] label,
-div[data-testid="stForm"] p {
-    color: #193653 !important;
-    font-weight: 700;
-}
-div[data-testid="stForm"] input {
-    border-radius: 9px;
-}
-div[data-testid="stForm"] button[kind="primary"] {
-    background: #ff4b4b !important;
-    border: 0 !important;
-    color: white !important;
-    font-weight: 800 !important;
-    border-radius: 9px !important;
-    min-height: 42px;
-}
-
-/* 제목 */
-.page-title {
-    font-size: 30px;
-    font-weight: 900;
-    color: #173653;
-    margin-bottom: 3px;
-}
-
-.page-subtitle {
-    color: #71869c;
-    font-size: 14px;
-    margin-bottom: 20px;
-}
-
-/* 배너 */
-.hero {
-    background: linear-gradient(110deg, #d9f5f5, #c8eff2);
-    border-radius: 22px;
-    padding: 28px;
-    margin-bottom: 20px;
-    min-height: 145px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.hero h1 {
-    font-size: 29px;
-    font-weight: 900;
-    color: #173653;
-    margin: 0 0 8px 0;
-}
-
-.hero h3 {
-    color: #159eae;
-    font-size: 18px;
-    margin: 0 0 12px 0;
-}
-
-.hero p {
-    color: #29465f;
-    font-size: 14px;
-    line-height: 1.8;
-    margin: 0;
-}
-
-.hero-icon {
-    font-size: 75px;
-    padding: 10px;
+.feature-desc {
+    font-size: 11px;
+    color: #a0abb6;
+    margin-top: 5px;
 }
 
 /* 섹션 제목 */
 .section-title {
     font-size: 19px;
-    font-weight: 900;
-    color: #173653;
-    margin: 20px 0 12px 0;
-}
-
-.section-number {
-    display: inline-block;
-    background: linear-gradient(90deg, #20bdc4, #51d2d1);
-    color: white;
-    padding: 4px 11px;
-    border-radius: 9px;
-    font-size: 13px;
-    margin-right: 8px;
-}
-
-/* 일반 카드 */
-.info-card {
-    background: white;
-    border-radius: 18px;
-    padding: 20px;
-    box-shadow: 0 5px 15px rgba(35,90,110,0.07);
-    height: 100%;
-}
-
-.info-card h3 {
-    color: #173653;
-    font-size: 17px;
-    font-weight: 900;
-    margin: 5px 0 8px 0;
-}
-
-.info-card p {
-    color: #71869c;
-    font-size: 13px;
-    line-height: 1.7;
-    margin: 0;
-}
-
-.card-icon {
-    font-size: 35px;
-    text-align: center;
-    margin-bottom: 7px;
-}
-
-/* 트랙 카드 */
-.track-card {
-    color: white;
-    border-radius: 19px;
-    padding: 22px;
-    min-height: 130px;
-}
-
-.track-card h2 {
-    font-size: 21px;
-    margin: 5px 0;
-}
-
-.track-card p {
-    font-size: 13px;
-    line-height: 1.6;
-    color: white;
-}
-
-.track-ai {
-    background: linear-gradient(120deg, #27b9c0, #3abac5);
-}
-
-.track-dx {
-    background: linear-gradient(120deg, #5c9fee, #79adf6);
-}
-
-/* 교육 로드맵 */
-.roadmap-card {
-    background: white;
-    border: 1px solid #e2f0f4;
-    border-radius: 17px;
-    padding: 17px 10px;
-    text-align: center;
-    min-height: 150px;
-    box-shadow: 0 4px 12px rgba(35,90,110,0.05);
-}
-
-.roadmap-icon {
-    font-size: 34px;
-}
-
-.step {
-    display: inline-block;
-    background: #21b8c0;
-    color: white;
-    border-radius: 20px;
-    padding: 4px 13px;
-    font-size: 11px;
     font-weight: 800;
-    margin: 5px;
+    color: #19334d;
+    margin: 15px 0;
 }
 
-.roadmap-card h3 {
-    font-size: 16px;
-    color: #173653;
-    margin: 5px 0;
+/* 출결 및 일정 달력 */
+.st-key-calendar_panel {
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 22px;
+    margin: 18px 0 24px 0;
+    box-shadow: 0 5px 20px rgba(50,80,100,0.06);
 }
-
-.roadmap-card p {
+.calendar-panel {
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 22px;
+    margin: 18px 0 24px 0;
+    box-shadow: 0 5px 20px rgba(50,80,100,0.06);
+}
+.calendar-caption {
+    color: #91a2ae;
     font-size: 12px;
-    color: #71869c;
-    line-height: 1.5;
+    margin-top: -6px;
+    margin-bottom: 12px;
 }
-
-/* 학습 분야 */
-.subject-card {
-    background: white;
-    border-radius: 17px;
-    padding: 15px 8px;
+.calendar-weekday {
     text-align: center;
-    min-height: 120px;
-    box-shadow: 0 4px 12px rgba(35,90,110,0.06);
-    border: 1px solid #e7f1f4;
+    color: #7f929f;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 0;
 }
-
-.subject-icon {
-    font-size: 32px;
-}
-
-.subject-card h4 {
-    color: #173653;
-    font-size: 15px;
-    margin: 5px 0;
-}
-
-.subject-card p {
-    color: #71869c;
+.calendar-legend {
+    color: #8496a3;
     font-size: 11px;
-    line-height: 1.5;
-    margin: 0;
+    margin-top: 10px;
 }
-
-/* 프로젝트 카드 */
-.project-card {
-    background: white;
-    border-radius: 17px;
-    padding: 18px;
-    border: 1px solid #e4eff3;
-    box-shadow: 0 4px 12px rgba(35,90,110,0.05);
+.calendar-subcard {
+    background: #f7fafc;
+    border: 1px solid #edf2f5;
+    border-radius: 16px;
+    padding: 15px;
+    min-height: 150px;
+}
+.calendar-subtitle {
+    color: #19334d;
+    font-weight: 800;
+    font-size: 14px;
     margin-bottom: 10px;
 }
 
-.project-card h3 {
-    color: #173653;
-    font-size: 17px;
+section[data-testid="stSidebar"] button p {color:inherit !important;}
+button[kind="primary"] {background:#43aebe !important;color:white !important;border-color:#43aebe !important;}
+.st-key-calendar_panel .stButton > button {min-height:58px;}
+/* 달력 날짜 버튼 */
+.st-key-calendar_day button {
+    min-height: 58px;
 }
 
-.project-card p {
-    color: #71869c;
-    font-size: 12px;
-    line-height: 1.8;
-}
-
-/* 하단 배너 */
-.bottom-banner {
-    background: linear-gradient(100deg, #117d8b, #168b99);
-    border-radius: 18px;
+/* 채팅 영역 */
+.st-key-chat_panel {
+    background-color: white;
+    border-radius: 25px;
     padding: 20px;
-    color: white;
-    margin-top: 22px;
+    box-shadow: 0 5px 20px rgba(50,80,100,0.06);
+    min-height: 450px;
 }
 
-.bottom-banner h2 {
-    color: white;
-    font-size: 22px;
-    margin: 0 0 5px 0;
-}
-
-.bottom-banner p {
-    color: white;
-    margin: 0;
-    font-size: 14px;
-}
-
-/* 오른쪽 패널 */
-.right-card {
-    background: white;
-    border-radius: 20px;
-    padding: 22px;
-    margin-bottom: 17px;
-    box-shadow: 0 5px 15px rgba(35,90,110,0.06);
-}
-
-.assistant-icon {
-    background: #e9f2fc;
-    border-radius: 50%;
-    width: 85px;
-    height: 85px;
-    margin: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 42px;
-}
-
-.right-card h3 {
-    color: #173653;
+/* 채팅 제목 */
+.chat-heading {
     font-size: 17px;
+    font-weight: 800;
+    color: #19334d;
     margin-bottom: 12px;
 }
 
-.right-card p {
-    color: #8294a8;
+.chat-description {
     font-size: 12px;
-    line-height: 1.8;
+    color: #9baab4;
+    margin-bottom: 15px;
 }
 
-.question-item {
-    background: white;
-    border: 1px solid #e6eff2;
-    border-radius: 12px;
-    padding: 11px;
+/* 채팅 말풍선 */
+div[data-testid="stChatMessage"] {
+    border-radius: 15px;
+    padding: 13px;
+    margin-bottom: 12px;
+}
+
+/* 사용자 메시지 */
+div[data-testid="stChatMessage"]:has(
+    div[data-testid="chatAvatarIcon-user"]
+) {
+    background-color: #e5f5f5;
+}
+
+/* AI 메시지 */
+div[data-testid="stChatMessage"]:has(
+    div[data-testid="chatAvatarIcon-assistant"]
+) {
+    background-color: #f2f6fb;
+}
+
+/* 오른쪽 프로필 */
+.profile-card {
+    background-color: white;
+    border-radius: 24px;
+    padding: 25px 15px;
     text-align: center;
-    font-size: 12px;
-    color: #36536e;
-    margin-bottom: 9px;
+    box-shadow: 0 5px 20px rgba(50,80,100,0.06);
+    margin-bottom: 20px;
 }
 
-.small-text {
-    color: #91a5b5;
-    font-size: 11px;
+.profile-icon {
+    font-size: 42px;
+    background-color: #e9f1fa;
+    width: 80px;
+    height: 80px;
+    line-height: 80px;
+    border-radius: 50%;
+    margin: auto;
 }
 
-/* 홈 환영 카드 */
-.welcome-card {
-    border-radius: 20px;
-    padding: 22px;
-    min-height: 155px;
-    color: white;
-}
-
-.welcome-card h3 {
-    font-size: 17px;
-    color: white;
-}
-
-.welcome-card p {
-    color: white;
-    font-size: 12px;
-    line-height: 1.8;
-}
-
-.welcome-one {
-    background: #39afbd;
-}
-
-.welcome-two {
-    background: #80acf0;
-}
-
-/* 달력 */
-.calendar-box {
-    background: white;
-    padding: 20px;
-    border-radius: 20px;
-    box-shadow: 0 5px 15px rgba(35,90,110,0.06);
-}
-
-.calendar-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 7px;
-    text-align: center;
-}
-
-.calendar-day {
-    padding: 11px 3px;
-    border: 1px solid #e8f0f4;
-    border-radius: 10px;
-    font-size: 11px;
-    color: #36536e;
-}
-
-.calendar-head {
-    color: #8499aa;
+.profile-name {
+    color: #19334d;
+    font-size: 18px;
     font-weight: 800;
-    padding: 8px;
+    margin-top: 12px;
+}
+
+.profile-desc {
     font-size: 12px;
+    color: #a1adb8;
+    margin-top: 5px;
 }
 
-.today {
-    background: #32b3bf;
-    color: white;
-    font-weight: 900;
+/* 오른쪽 정보 카드 */
+.info-card {
+    background-color: white;
+    border-radius: 18px;
+    padding: 18px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 15px rgba(50,80,100,0.05);
 }
 
-/* Streamlit 버튼 */
+.info-title {
+    color: #19334d;
+    font-size: 15px;
+    font-weight: 800;
+    margin-bottom: 12px;
+}
+
+.info-card p {
+    font-size: 12px;
+    color: #9aa8b3;
+    line-height: 1.8;
+}
+
+/* 버튼 */
 .stButton > button {
     border-radius: 12px;
-    border: 1px solid #dcebf0;
-    background: white;
-    color: #244763;
-    font-weight: 700;
+    border: 1px solid #e5edf1;
+    background-color: white;
+    color: #29445b;
+    min-height: 42px;
+    font-size: 13px;
+    transition: 0.2s;
 }
 
 .stButton > button:hover {
-    background: #e7f8f9;
-    color: #159eae;
-    border-color: #40c1c8;
+    border-color: #55b9c1;
+    color: #269eaa;
+    background-color: #f0fbfb;
 }
 
-/* 입력창 */
-.stChatInput textarea {
-    color: #193653;
+/* 파일 업로드 */
+div[data-testid="stFileUploader"] {
+    background-color: white;
+    border-radius: 13px;
+    padding: 10px;
 }
 
-div[data-testid="stChatMessage"] {
-    background: white;
-    border-radius: 14px;
+/* 채팅 입력 폼 */
+div[data-testid="stForm"] {
+    background-color: #f3f6fa;
+    border-radius: 15px;
+    padding: 10px;
+    border: none;
 }
 
+/* 구분선 */
 hr {
-    border-color: #d9eaee;
-}
-
-/* 사이드바 선택 메뉴 색상 최종 보정 */
-section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"],
-section[data-testid="stSidebar"] button[kind="primary"] {
-    background-color: #eafafa !important;
-    border-color: #eafafa !important;
-    color: #193653 !important;
-    -webkit-text-fill-color: #193653 !important;
-}
-section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] *,
-section[data-testid="stSidebar"] button[kind="primary"] * {
-    color: #193653 !important;
-    -webkit-text-fill-color: #193653 !important;
+    border-color: #e9eff2;
 }
 
 
-.profile-stage-badge {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 7px 14px;
-    border-radius: 999px;
-    background: #e4f7f7;
-    color: #159eaa;
-    border: 1px solid #c7eeee;
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1.4;
+/* 캘린더 오른쪽 패널: 본문과 함께 흘러가지 않고 화면 상단에 유지 */
+@media (min-width: 769px) {
+    [data-testid="stColumn"]:has(.st-key-upcoming_panel) {
+        position: sticky;
+        top: 4.5rem;
+        align-self: flex-start;
+        height: fit-content;
+        max-height: calc(100dvh - 5.5rem);
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        scrollbar-width: thin;
+    }
 }
+/* 좁은 화면에서 세로로 쌓이는 패널은 본문을 가리지 않도록 일반 배치 */
+@media (max-width: 768px) {
+    [data-testid="stColumn"]:has(.st-key-upcoming_panel) {
+        position: static;
+        max-height: none;
+        overflow: visible;
+    }
+}
+
+
+.today-card { background: linear-gradient(115deg, #ffffff 0%, #def4ee 100%); border: 1px solid #c8e6df; border-radius: 24px; padding: 28px 32px; margin: 8px 0 12px; box-shadow: 0 8px 28px rgba(37,95,87,.05); display: flex; align-items: center; gap: 28px; }
+.today-stamp { min-width: 94px; padding: 12px; border-radius: 18px; background: #fff; text-align: center; box-shadow: 0 4px 14px rgba(37,95,87,.06); }
+.today-month { color: #41877b; font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+.today-number { color: #116e61; font-size: 46px; font-weight: 800; line-height: 1.2; }
+.today-weekday { color: #55746d; font-size: 13px; }
+.today-eyebrow { color: #537a72; font-size: 13px; letter-spacing: .7px; margin-bottom: 8px; }
+.today-heading { color: #23483f; font-size: clamp(21px, 2.1vw, 30px); font-weight: 750; line-height: 1.4; margin: 0 0 9px; }
+.today-heading strong { color: #008675; }
+.today-cheer { color: #48675f; font-size: 15px; margin: 0 0 12px; line-height: 1.6; }
+.today-basis { color: #718c85; font-size: 11px; }
+@media(max-width: 600px) { .today-card { padding: 20px 16px; gap: 15px; } .today-stamp { min-width: 72px; } .today-number { font-size: 36px; } }
+
+
+.cert-exam-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 10px 0 18px; }
+.cert-exam-card { background: #fff; border: 1px solid #d4e6e2; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; box-shadow: 0 5px 18px rgba(32,86,76,.04); min-width: 0; }
+.cert-card-badge { color: #137f6e; background: #edf8f4; border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 650; align-self: flex-start; }
+.cert-exam-card h3 { color: #29473e; font-size: 19px; line-height: 1.5; margin: 14px 0 16px; overflow-wrap: anywhere; }
+.cert-exam-card dl { margin: 0 0 22px; }
+.cert-exam-card dt { color: #738a83; font-size: 12px; margin-bottom: 4px; }
+.cert-exam-card dd { color: #3e534d; font-size: 14px; line-height: 1.7; margin: 0 0 12px; overflow-wrap: anywhere; }
+a.cert-apply-link { display: block; text-align: center; background: #eef8f4; color: #117963 !important; border: 1px solid #cce9df; border-radius: 11px; padding: 11px 12px; margin-top: auto; text-decoration: none !important; font-size: 14px; font-weight: 650; }
+a.cert-apply-link:hover { background: #dcf1e8; border-color: #80baa7; }
+a.cert-apply-link:focus-visible { outline: 3px solid #168a72; outline-offset: 3px; }
+@media(max-width: 640px) { .cert-exam-grid { grid-template-columns: 1fr; } }
 
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================================================
+# ==========================================
 # 3. RAG 설정
-# =========================================================
+# ==========================================
+
+import os, re, json, math, tempfile, hashlib
+from pathlib import Path
+from collections import Counter
+import pandas as pd
+CHROMA_DIR = "chroma_db"
+COLLECTION = "aivle_docs"
+ONTOLOGY_FILE = "aivle_ontology.json"
+BOT_IMG = "assets/bot.png"
+
+def ensure_rag_imports():
+    global OpenAIEmbeddings, ChatOpenAI, Chroma, Document
+    global ChatPromptTemplate, MessagesPlaceholder, StrOutputParser
+    global PyMuPDF4LLMLoader, RecursiveCharacterTextSplitter
+    from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+    from langchain_chroma import Chroma
+    from langchain_core.documents import Document
+    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_pymupdf4llm import PyMuPDF4LLMLoader
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    try:
+        key = st.secrets.get("OPENAI_API_KEY")
+        if key: os.environ["OPENAI_API_KEY"] = key
+    except Exception:
+        pass
 
 def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    return "\n\n".join(d.page_content for d in docs)
 
+@st.cache_resource(show_spinner="백서 검색을 준비하고 있습니다. 최초 질문 시 시간이 걸릴 수 있습니다.")
+def get_vectorstore():
+    ensure_rag_imports()
+    embedding = OpenAIEmbeddings(model="text-embedding-3-small")
+    # Existing deployed DB is reused; opening UI pages never indexes the PDF.
+    vs = Chroma(collection_name=COLLECTION, embedding_function=embedding,
+                persist_directory=CHROMA_DIR)
+    if vs._collection.count():
+        return vs
+    pdf = Path("AIVLE School 백서.pdf")
+    if not pdf.exists():
+        raise ValueError("백서 PDF 또는 기존 chroma_db를 배포 저장소에 넣어 주세요.")
+    digest = hashlib.sha256(pdf.read_bytes()).hexdigest()[:20]
+    vs = Chroma(collection_name="whitepaper_"+digest, embedding_function=embedding,
+                persist_directory=CHROMA_DIR)
+    if not vs._collection.count():
+        docs = PyMuPDF4LLMLoader(str(pdf)).load()
+        chunks = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100,
+                    separators=["\n\n", "\n", ".", " ", ""]).split_documents(docs)
+        chunks = [d for d in chunks if d.page_content.strip()]
+        if not chunks: raise ValueError("백서에서 텍스트를 추출하지 못했습니다.")
+        vs.add_documents(chunks)
+    return vs
 
-@st.cache_resource
-def get_retriever():
-
-    embedding = OpenAIEmbeddings(
-        model="text-embedding-3-small"
-    )
-
-    vectorstore = Chroma(
-        collection_name=COLLECTION,
-        embedding_function=embedding,
-        persist_directory=CHROMA_DIR
-    )
-
-    return vectorstore.as_retriever(
-        search_kwargs={"k": 3}
-    )
-
-
-@st.cache_resource
-def get_chain():
-
-    retriever = get_retriever()
-
-    s_msg = """
-    당신은 주어진 문서를 기반으로 답변하는
-    AIVLE School 학습 도우미입니다.
-
-    반드시 제공된 문서를 우선적으로 참고하여 답변하세요.
-    문서에 없는 내용은 추측하지 말고 안내하세요.
-
-    [문서]
-    {context}
-    """
-
-    h_msg = "{input}"
-
+# Uploads use an in-memory retriever isolated from other users and the whitepaper.
+def rag_pipeline(filepath, collection_name=None):
+    ensure_rag_imports()
+    docs = PyMuPDF4LLMLoader(filepath).load()
+    chunks = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100,
+                separators=["\n\n", "\n", ".", " ", ""]).split_documents(docs)
+    chunks = [d for d in chunks if d.page_content.strip()]
+    if not chunks: raise ValueError("문서에서 텍스트를 추출하지 못했습니다.")
+    from langchain_core.vectorstores import InMemoryVectorStore
+    vs = InMemoryVectorStore.from_documents(chunks, OpenAIEmbeddings(model="text-embedding-3-small"))
     prompt = ChatPromptTemplate.from_messages([
-        ("system", s_msg),
-        ("human", h_msg)
-    ])
+        ("system", "문서 내용만 근거로 답하세요. 근거가 없으면 확인되지 않는다고 말하세요.\n{context}"),
+        ("human", "{input}")])
+    return ({"context": itemgetter("input") | vs.as_retriever(search_kwargs={"k":4}) | format_docs,
+             "input": itemgetter("input")} | prompt | get_llm() | StrOutputParser())
 
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        streaming=True,
-        temperature=0
-    )
-
-    rag_chain = (
-        {
-            "context": itemgetter("input") | retriever | format_docs,
-            "input": itemgetter("input")
-        }
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-
-    return rag_chain
+# 4.2 백서 검색기: 벡터 + BM25(한글 2-gram) Hybrid, RRF로 합침
+def kor_tokenize(text):
+    tokens = re.findall(r"[A-Za-z0-9]+|[가-힣]+", text.lower())
+    result = []
+    for w in tokens:
+        result.append(w)
+        if re.match(r"[가-힣]", w) and len(w) >= 2:
+            result += [w[i:i+2] for i in range(len(w) - 1)]
+    return result
 
 
-# =========================================================
-# 4. 세션 상태
-# =========================================================
+class SimpleBM25:
+    """rank_bm25와 같은 BM25Okapi 계산 (추가 패키지 없이 구현)"""
+    def __init__(self, docs, k1=1.5, b=0.75):
+        self.docs = docs
+        self.toks = [kor_tokenize(d.page_content) for d in docs]
+        self.avgdl = sum(len(t) for t in self.toks) / max(len(self.toks), 1)
+        self.tf = [Counter(t) for t in self.toks]
+        df = Counter()
+        for t in self.toks:
+            df.update(set(t))
+        n = len(self.toks)
+        self.idf = {w: math.log((n - c + 0.5) / (c + 0.5) + 1) for w, c in df.items()}
+        self.k1, self.b = k1, b
+
+    def search(self, query, k=8):
+        q = kor_tokenize(query)
+        scores = []
+        for i, tf in enumerate(self.tf):
+            dl = len(self.toks[i])
+            s = 0.0
+            for w in q:
+                if w in tf:
+                    f = tf[w]
+                    s += self.idf[w] * f * (self.k1 + 1) / (f + self.k1 * (1 - self.b + self.b * dl / self.avgdl))
+            scores.append(s)
+        order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+        return [self.docs[i] for i in order[:k] if scores[i] > 0]
+
+
+def rrf_merge(result_lists, weights, c=60, top_n=4):
+    score, keep = {}, {}
+    for docs, w in zip(result_lists, weights):
+        for rank, d in enumerate(docs):
+            key = d.page_content
+            score[key] = score.get(key, 0) + w / (c + rank + 1)
+            keep[key] = d
+    best = sorted(score, key=score.get, reverse=True)[:top_n]
+    return [keep[k] for k in best]
+
+
+@st.cache_resource
+def get_bm25():
+    data = get_vectorstore()._collection.get(include=["documents", "metadatas"])
+    docs = [Document(page_content=t, metadata=m or {}) for t, m in zip(data["documents"], data["metadatas"])]
+    return SimpleBM25(docs) if docs else None
+
+
+def hybrid_retrieve(query, k=4):
+    vec = get_vectorstore().similarity_search(query, k=8)
+    bm25 = get_bm25()
+    kw = bm25.search(query, k=8) if bm25 else []
+    return rrf_merge([kw, vec], [0.5, 0.5], top_n=k)
+
+
+@st.cache_resource
+def get_llm(streaming=True):
+    ensure_rag_imports()
+    return ChatOpenAI(model="gpt-4o-mini", streaming=streaming, temperature=0)
+
+# 4.3 쿼리 리라이팅 (혜린님 규칙)
+REWRITE_SYS = """당신은 KT AIVLE School 문서 검색을 위한 질의 재작성 도우미입니다.
+대화 이력과 현재 질문을 참고하여, 이전 대화 없이도 의미를 이해할 수 있는 독립적인 검색 질문 한 개를 작성하세요.
+규칙:
+1. "그럼", "그 회사", "그 조건"처럼 생략된 대상을 대화에서 명확히 확인할 수 있을 때만 구체적으로 바꾸세요.
+2. 현재 질문의 의미와 조건을 유지하세요.
+3. 기수, 트랙, 기업명, 인물명, 숫자를 임의로 바꾸거나 추가하지 마세요.
+4. 새로운 주제의 질문이면 이전 주제와 억지로 연결하지 마세요.
+5. 이미 독립적으로 이해할 수 있는 질문이면 그대로 반환하세요.
+6. 대화에 나온 이전 답변을 검증된 사실로 취급하지 마세요.
+7. 답을 작성하지 말고 검색 질문만 한 줄로 출력하세요."""
+
+
+def rewrite_question(question, history):
+    ensure_rag_imports()
+    if not history:
+        return question
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", REWRITE_SYS), MessagesPlaceholder("history"), ("human", "{input}")])
+    chain = prompt | get_llm(False) | StrOutputParser()
+    out = chain.invoke({"input": question, "history": history}).strip()
+    return out or question
+
+# 4.4 답변 프롬프트: rag_pipeline 규칙 + 프로필 + 현재 화면
+ANSWER_SYS = """
+당신은 KT AIVLE School 교육생과 예비 지원자를 돕는 'AIVLE School 학습 도우미'입니다.
+1. 반드시 제공된 문서 내용(context)에 근거하여 답변하세요.
+2. 문서에 없는 내용은 추측하지 말고 "업로드된 문서에서 확인되지 않습니다."라고 답한 뒤, 확인할 수 있는 곳(공식 홈페이지, AIVLE-EDU 공지, 담당 매니저 등)을 안내하세요.
+3. 문서에 [추정], [후기], [언론] 표기가 있는 내용은 그 표기를 함께 알려 근거 수준을 밝히세요.
+4. 일정, 자격, 지원금처럼 바뀔 수 있는 정보는 운영 공지 확인을 함께 안내하세요.
+5. 답변은 간결하고 명확하게 목록 형태로 정리하고, 마지막에 바로 실천할 수 있는 한 줄 응원이나 도전 제안을 덧붙이세요.
+
+[사용자 프로필]
+{profile}
+
+[사용자가 보고 있는 화면]
+{screen}
+
+[문서]
+{context}"""
+
+
+def answer_stream(question, history, profile_text, screen_text):
+    """백서 기준 답변: 리라이팅 → Hybrid 검색 → 프로필·화면 반영 답변 (스트리밍)"""
+    search_q = rewrite_question(question, history)
+    docs = hybrid_retrieve(search_q, k=4)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", ANSWER_SYS), MessagesPlaceholder("history"), ("human", "{input}")])
+    chain = prompt | get_llm(True) | StrOutputParser()
+    stream = chain.stream({"input": question, "history": history, "profile": profile_text,
+                           "screen": screen_text or "없음", "context": format_docs(docs)})
+    return stream, docs, search_q
+
+# ==========================================
+# 6. 온톨로지 불러오기
+# ==========================================
+@st.cache_data
+def load_ontology_text(raw):
+    data = json.loads(raw)
+    nodes = {n["id"]: n.get("type", "기타") for n in data.get("nodes", [])}
+    links = data.get("links") or data.get("edges") or []
+    edges = []
+    for l in links:
+        edges.append({"subject": l["source"], "relation": l.get("relation", "관련됨"),
+                      "object": l["target"], "evidence": l.get("evidence", ""),
+                      "page": l.get("page", ""),
+                      "s_type": nodes.get(l["source"], "기타"), "o_type": nodes.get(l["target"], "기타")})
+    return edges
+
+
+TAB_RULES = {
+    "교육": ({"과목", "미니프로젝트", "트랙", "규정"}, ["교육", "과목", "미니프로젝트", "출결", "수료", "장려금", "파이썬", "머신러닝", "딥러닝"]),
+    "취업": ({"취업프로그램", "플랫폼", "자격"}, ["취업", "컨설팅", "면접", "잡페어", "인적성", "자기소개서", "플랫폼", "AICE"]),
+    "포폴": (set(), ["포트폴리오", "프로젝트", "깃허브", "GitHub", "노션", "발표"]),
+}
+
+
+def edge_in_tab(e, tab):
+    types, kws = TAB_RULES[tab]
+    if e["s_type"] in types or e["o_type"] in types:
+        return True
+    text = f'{e["subject"]} {e["object"]} {e["evidence"]}'
+    return any(k in text for k in kws)
+
+def ask(question):
+    st.session_state.pending_prompt = question
+
+def save_archive():
+    # Per-browser session only: never share chat history through a server JSON file.
+    pass
+
+# 3.2 프로필 단계별 설정 (예비 에이블러 / 에이블러 / 수료자)
+STAGES = {
+    "예비": {
+        "label": "예비 에이블러", "emoji": "🌱",
+        "desc": "지원·합격 발표·입교 준비 단계<br>지원 자격, 트랙 선택, 입교 전 준비",
+        "focus": ["지원", "자격", "트랙", "역량", "입교", "파이썬"],
+        "rule": "사용자는 아직 입교 전인 예비 지원자임. 일정은 정확한 날짜 대신 '교육 n주차' 또는 '○월 초·중·말 예정'처럼 대략적으로 안내함. 지원을 망설이지 않도록 도전을 응원하는 말로 마무리함.",
+        "questions": ["비전공자도 따라갈 수 있나요?", "AI 개발자 트랙과 DX 트랙은 어떻게 달라요?",
+                      "지원 자격과 선발 절차를 알려주세요.", "입교 전에 무엇을 준비하면 좋을까요?"],
+    },
+    "재학": {
+        "label": "에이블러", "emoji": "🚀",
+        "desc": "교육 과정 진행 중<br>출결·장려금, 미니프로젝트, 취업 일정",
+        "focus": ["미니프로젝트", "출결", "장려금", "컨설팅", "포트폴리오", "AICE"],
+        "rule": "사용자는 현재 교육 중인 에이블러임. 일정은 월/일 날짜로 정확히 안내하고, 신청 마감이 가까운 순서로 정리함.",
+        "questions": ["훈련장려금은 얼마이고 어떤 조건에서 받나요?", "지각, 조퇴 기준과 수료 기준을 알려주세요.",
+                      "포트폴리오·자소서·면접 컨설팅은 언제 신청하나요?", "DX 트랙 포트폴리오에는 어떤 프로젝트를 넣나요?"],
+    },
+    "수료": {
+        "label": "수료자", "emoji": "🎓",
+        "desc": "수료 후 1년간 맞춤 정보 제공<br>취업 준비, 잡페어, 면접, 선배 사례",
+        "focus": ["취업", "잡페어", "면접", "자기소개서", "포트폴리오", "사례"],
+        "rule": "사용자는 과정을 마친 수료생임. 일정은 월/일 날짜로 안내하고, 취업 준비와 선배 사례 중심으로 답함.",
+        "questions": ["잡페어와 모의면접은 언제인가요?", "면접은 어떻게 준비하면 좋을까요?",
+                      "선배들은 어떤 직무로 취업했나요?", "포트폴리오를 어떤 순서로 정리하면 좋을까요?"],
+    },
+}
+
+# 3.4 날짜 표시
+def fmt_event_date(start, end, stage):
+    """재학·수료는 월/일 날짜, 예비는 n주차·○월 초/중/말 예정으로 표시"""
+    if stage == "예비":
+        week = (start - EDU_START).days // 7 + 1
+        part = "초" if start.day <= 10 else ("중" if start.day <= 20 else "말")
+        w = f"교육 {week}주차 · " if week >= 1 else ""
+        return f"{w}{start.month}월 {part} 예정"
+    s = f"{start.month}/{start.day:02d}({WEEKDAY[start.weekday()]})"
+    if end != start:
+        s += f" ~ {end.month}/{end.day:02d}({WEEKDAY[end.weekday()]})"
+    return s
+
+
+def dday_text(start, end, today):
+    if start <= today <= end:
+        return "진행 중"
+    d = (start - today).days
+    return f"D-{d}" if d > 0 else "종료"
+
+EDU_START = date(2026,9,29)
+EDU_END = date(2027,3,5)
+WEEKDAY = ["월","화","수","목","금","토","일"]
+def render_event_list(evs):
+    lines = []
+    for s, e, title, cat in evs:
+        when = fmt_event_date(s, e, stage)
+        st.markdown(f"""
+        <div class="event-row">
+            <span class="dday">{dday_text(s, e, today)}</span>
+            <span class="tag tag-{cat}">{cat}</span><span class="event-title">{title}</span>
+            <div class="event-date">{when}</div>
+        </div>""", unsafe_allow_html=True)
+        lines.append(f"{title}({when}, {dday_text(s, e, today)})")
+    if not evs:
+        st.caption("남은 일정이 없습니다.")
+    return lines
+
+# 10.4 취업과정 (체크리스트 공통 사용)
+CHECKLISTS = {
+    "취업": {
+        "예비": ["지원 자격(연령·학력·미취업) 확인", "국민내일배움카드 발급 가능 여부 확인", "트랙 선택 이유 정리"],
+        "재학": ["취업지원 플랫폼 회원가입", "포트폴리오 컨설팅 신청", "자기소개서 컨설팅 신청", "면접 컨설팅 신청", "잡페어 참여 기업 확인"],
+        "수료": ["지원 직무 JD 3줄 분석", "포트폴리오 최신화", "면접 답변 경험 8문항 정리", "잡페어 후속 지원"],
+    },
+    "포폴": {
+        "예비": ["지금까지의 프로젝트·경험 목록 만들기", "GitHub 계정 만들기"],
+        "재학": ["프로젝트 1: 문제 정의부터 제안까지 간 대표 프로젝트", "프로젝트 2: 데이터로 근거를 만든 프로젝트",
+                 "프로젝트 3: 문서화·제안·고객 소통이 보이는 프로젝트", "각 프로젝트에 개요·판단 과정·결과 그림 넣기"],
+        "수료": ["지원 직무에 맞춰 프로젝트 순서 바꾸기", "빅프로젝트를 대표 프로젝트로 정리", "결과를 숫자로 표현"],
+    },
+}
+
+
+def render_checklist(kind):
+    items = CHECKLISTS[kind][stage]
+    done = 0
+    for i, item in enumerate(items):
+        key = f"{kind}_{stage}_{i}"
+        v = st.checkbox(item, value=st.session_state.checks.get(key, False), key=f"chk_{key}")
+        st.session_state.checks[key] = v
+        done += v
+    st.progress(done / len(items), text=f"{done}/{len(items)} 완료")
+    return f"체크리스트 {done}/{len(items)} 완료. 남은 항목: " + ", ".join(
+        it for i, it in enumerate(items) if not st.session_state.checks.get(f"{kind}_{stage}_{i}"))
+
+
+st.markdown('<style>\n.edu-hero {\n    background: linear-gradient(110deg, #dff5f6 0%, #eaf7fb 55%, #d9eff5 100%);\n    border-radius: 22px; padding: 25px 28px; margin: 8px 0 20px 0;\n    min-height: 145px; display: flex; align-items: center; justify-content: space-between;\n    box-shadow: 0 5px 18px rgba(50,80,100,0.05);\n}\n.edu-hero-title { color:#19334d; font-size:25px; font-weight:900; line-height:1.4; }\n.edu-hero-desc { color:#657d8e; font-size:14px; line-height:1.7; margin-top:8px; }\n.edu-hero-art { font-size:66px; white-space:nowrap; padding:0 15px; }\n.edu-section-head { display:flex; align-items:center; gap:10px; margin:17px 0 10px 0; color:#19334d; font-size:18px; font-weight:900; }\n.edu-section-no { background:#35b9c0; color:white; border-radius:9px; padding:4px 10px; font-size:13px; }\n.edu-track { border-radius:18px; padding:17px; min-height:112px; color:white; box-shadow:0 5px 15px rgba(50,80,100,.08); }\n.edu-track.ai { background:linear-gradient(110deg,#32b9c1,#39aebd); }\n.edu-track.dx { background:linear-gradient(110deg,#83b4f5,#659bea); }\n.edu-track h3 { color:white; font-size:19px; margin:0 0 6px 0; }\n.edu-track p { color:white; font-size:12px; margin:0; line-height:1.6; }\n.edu-track .track-icon { font-size:31px; float:left; margin-right:14px; }\n.edu-step { background:#f8fcfd; border:1px solid #e2f0f3; border-radius:17px; padding:13px 8px; text-align:center; min-height:128px; box-shadow:0 4px 12px rgba(50,80,100,.04); }\n.edu-step-icon { font-size:31px; }\n.edu-step-label { display:inline-block; background:#28aeb7; color:white; border-radius:12px; padding:3px 10px; font-size:10px; font-weight:800; margin:5px 0; }\n.edu-step-title { color:#19334d; font-size:14px; font-weight:900; }\n.edu-step-desc { color:#718697; font-size:11px; line-height:1.5; margin-top:5px; }\n.edu-topic { background:white; border:1px solid #eaf0f3; border-radius:16px; padding:13px 8px; min-height:105px; text-align:center; box-shadow:0 4px 12px rgba(50,80,100,.05); }\n.edu-topic-icon { font-size:27px; }\n.edu-topic-title { color:#19334d; font-weight:900; font-size:14px; margin-top:3px; }\n.edu-topic-desc { color:#8193a0; font-size:11px; margin-top:4px; line-height:1.4; }\n.edu-project { background:white; border:1px solid #e8eff3; border-radius:16px; padding:14px; margin-bottom:10px; box-shadow:0 4px 12px rgba(50,80,100,.05); }\n.edu-project h4 { color:#19334d; font-size:15px; margin:0 0 7px 0; }\n.edu-project p { color:#718697; font-size:11px; line-height:1.7; margin:0; }\n.edu-banner { background:linear-gradient(100deg,#087b88,#0b6575); color:white; border-radius:17px; padding:16px 22px; margin-top:16px; text-align:center; }\n.edu-banner strong { font-size:20px; }\n.edu-banner span { font-size:12px; opacity:.9; }\n.job-hero-title { color:#19334d; font-size:24px; font-weight:900; line-height:1.4; }\n.job-hero-desc { color:#20a6b6; font-size:14px; font-weight:700; line-height:1.7; margin-top:8px; }\n.job-hero-art { font-size:58px; white-space:nowrap; padding:0 12px; }\n.job-section-head { display:flex; align-items:center; gap:10px; margin:15px 0 9px; color:#19334d; font-size:17px; font-weight:900; }\n.job-section-no { background:#27b5bd; color:white; border-radius:9px; padding:4px 10px; font-size:12px; }\n.job-roadmap-card { border-radius:16px; padding:14px 8px; min-height:124px; text-align:center;\n    background:linear-gradient(145deg,#e4f8f7,#e8f3ff); border:1px solid #e2eff4; }\n.job-roadmap-icon { font-size:29px; }\n.job-roadmap-title { color:#19334d; font-weight:900; font-size:13px; margin-top:5px; }\n.job-roadmap-desc { color:#6e8292; font-size:10px; line-height:1.5; margin-top:5px; }\n.job-mini-card { background:white; border:1px solid #eaf0f3; border-radius:16px; padding:13px;\n    min-height:100px; box-shadow:0 4px 12px rgba(50,80,100,.05); margin-bottom:8px; }\n.job-mini-title { color:#19334d; font-size:13px; font-weight:900; margin-bottom:5px; }\n.job-mini-desc { color:#718697; font-size:11px; line-height:1.55; }\n.job-role-panel { background:#f7fbfd; border:1px solid #e7f0f4; border-radius:17px; padding:15px; min-height:210px; }\n.job-role-title { color:#19334d; font-size:15px; font-weight:900; margin-bottom:7px; }\n.job-role-desc { color:#718697; font-size:11px; line-height:1.65; }\n.job-role-row { color:#405a6e; font-size:11px; line-height:1.8; margin-top:7px; }\n.job-resource { background:white; border:1px solid #eaf0f3; border-radius:15px; padding:13px 6px;\n    min-height:92px; text-align:center; box-shadow:0 4px 12px rgba(50,80,100,.05); }\n.job-resource-icon { font-size:27px; }\n.job-resource-title { color:#19334d; font-size:12px; font-weight:900; margin-top:5px; }\n.job-content-panel { background:linear-gradient(110deg,#f5fbfc,#eef9fa); border-radius:17px; padding:15px 17px; min-height:150px; }\n.job-content-line { color:#405a6e; font-size:12px; line-height:1.9; }\n.job-bottom-banner { background:linear-gradient(100deg,#087b88,#0b6575); color:white; border-radius:17px;\n    padding:15px 20px; margin-top:15px; text-align:center; }\n.job-bottom-banner strong { font-size:19px; }\n.job-bottom-banner span { font-size:12px; opacity:.92; }.page-title{font-size:28px;font-weight:800;color:#19334d}.page-sub{color:#8294a4;margin-bottom:20px}.white-card{background:white;padding:24px;border-radius:18px;margin-bottom:18px}</style>', unsafe_allow_html=True)
+
+
+# ==========================================
+# 4. 세션 상태 초기화
+# ==========================================
+KST = ZoneInfo('Asia/Seoul')
+
+
+def korea_today(now=None):
+    """서버의 시간대와 무관하게 한국 날짜를 사용합니다."""
+    return (now or datetime.now(KST)).astimezone(KST).date()
+
+
+def event(eid, title, start, end=None, category='취업지원', mode='once',
+          period='시간 미정', description='', source='백서 7.2.1 · 본문 51쪽'):
+    return dict(id=eid, title=title, start=start, end=end or start,
+                category=category, mode=mode, period=period,
+                description=description, source=source)
+
+
+# 종료일은 포함입니다. 연도 생략 일정은 10기 과정의 연속성을 따라 2026→2027로 정리했습니다.
+# mode: once=기간 중 한 번 완료, daily=날짜별 완료, info=안내(체크 없음).
+EVENTS = [
+    event('day1-am', '코딩테스트 1차', '2026-11-13', category='교육', period='오전'),
+    event('day1-pm', '취업지원 안내·포트폴리오 강의·네트워킹', '2026-11-13', period='오후'),
+    event('mini4', '미니프로젝트 4차', '2026-11-16', '2026-11-17', '프로젝트', 'daily',
+          description='백서·RAG 학습 도우미 구축. 각 날짜의 진행 완료를 체크합니다.', source='백서 3.2 · 본문 29쪽'),
+    event('signup', '취업지원 플랫폼 회원가입', '2026-11-16', '2026-11-18',
+          description='회원가입 후 구직희망 정보, 입사지원서, 포트폴리오를 등록합니다. 마감 시각은 백서에 명시되어 있지 않습니다.'),
+    event('platform', '취업지원 플랫폼 이용 가능', '2026-11-16', '2027-09-05', mode='info'),
+    event('ai-interview', 'AI 면접·AI 역량평가 연습', '2026-11-17', '2027-09-05', mode='info',
+          description='해당 기간 최대 15회 연습 가능. 매일 의무적으로 해야 하는 할 일은 아닙니다.'),
+    event('portfolio', '포트폴리오 컨설팅 신청', '2026-11-30', '2026-12-02',
+          description='신청 기간입니다. 실제 컨설팅은 빅프로젝트 이전 진행하며 개인별 시간은 별도 안내됩니다.'),
+    event('day2-am', '코딩테스트 2차', '2026-12-24', category='교육', period='오전'),
+    event('day2-pm', 'AI 상상광고 챌린지·면접 전략 특강', '2026-12-24', period='오후',
+          description='AIVLE Day 2. 클래스 네트워킹 포함.'),
+    event('resume-consult', '자기소개서 컨설팅 신청', '2026-12-28', '2027-01-03',
+          description='신청 기간입니다. 실제 컨설팅은 빅프로젝트 기간 중 진행됩니다.'),
+    event('interview-consult', '면접 컨설팅 신청', '2027-01-20', '2027-01-22',
+          description='신청 기간입니다. 실제 컨설팅은 빅프로젝트 기간 중 진행됩니다.'),
+    event('refresh-project', '빅프로젝트 재정비', '2027-02-22', category='프로젝트', period='오전'),
+    event('refresh-portfolio', '포트폴리오 재정비·실전 피칭 강의', '2027-02-22', period='오후'),
+    event('presession', '발표회 프리세션', '2027-02-23', category='프로젝트', period='오전'),
+    event('aptitude', '기업 인적성검사 대비·발표회 준비', '2027-02-23', period='오후'),
+    event('presentation', '빅프로젝트 발표회', '2027-02-24', category='프로젝트', period='종일',
+          description='백서에는 같은 날 클래스 네트워킹도 안내되어 있습니다.'),
+    event('resume-class', '이력서·자기소개서 강의', '2027-02-25', period='오전'),
+    event('resume-practice', '이력서·자기소개서 실습·잡서칭', '2027-02-25', period='오후'),
+    event('jobfair', 'AIVLE 잡페어', '2027-02-26', period='종일', description='장소와 참여 기업은 추후 안내.'),
+    event('mock-interview', '조별 모의면접·면접 스터디', '2027-03-02', '2027-03-03', mode='daily', period='오전'),
+    event('jobsearch', '잡서칭 세션', '2027-03-02', '2027-03-03', mode='daily', period='오후'),
+    event('platform-class', '취업 플랫폼 강의', '2027-03-04', period='오전'),
+    event('platform-practice', '취업 플랫폼 실습', '2027-03-04', period='오후'),
+    event('graduation', '에이블스쿨 수료', '2027-03-05', category='교육', source='백서 3.2 · 본문 30쪽'),
+]
+
+
+# 자격증 일정: 2026년 및 공식 발표가 확인된 2027년 1~3월.
+# 종료일 포함. window는 개인 시험일이 아닌 시행기간이며 할 일 체크에서 제외합니다.
+CERT_CHECKED = '2026-11-17'
+CERT_EVENTS = []
+
+
+def add_cert(cert, attempt, stage, start, end=None, *, url, window=False,
+             note='', evidence='공식', period='시각은 시행기관 공지 확인', completion_id=None):
+    eid = f'cert:{cert}:{attempt}:{stage}:{start}'
+    CERT_EVENTS.append(dict(
+        id=eid, title=f'{cert} · {attempt} · {stage}', start=start, end=end or start,
+        category='자격증', type='자격증', attempt=attempt, stage=stage, mode='window' if window else 'once',
+        period=period, description=note, memo=note, official=True, cert=cert,
+        source=evidence + ' 일정 · 확인 ' + CERT_CHECKED, source_url=url,
+        evidence=evidence, completion_id=completion_id or eid,
+    ))
+
+
+COS_ROWS = [
+('71','2025-11-17','2026-01-15','2026-01-17'),
+('72','2025-12-22','2026-02-19','2026-02-21'),
+('73','2026-01-19','2026-03-19','2026-03-21'),
+('74','2026-02-16','2026-04-16','2026-04-18'),
+('75','2026-03-16','2026-05-14','2026-05-16'),
+('76','2026-04-20','2026-06-18','2026-06-20'),
+('77','2026-05-18','2026-07-16','2026-07-18'),
+('78','2026-06-15','2026-08-13','2026-08-15'),
+('79','2026-07-20','2026-09-17','2026-09-19'),
+('80','2026-08-17','2026-10-15','2026-10-17'),
+('81','2026-09-21','2026-11-19','2026-11-21'),
+('82','2026-10-19','2026-12-17','2026-12-19'),
+('83','2026-11-23','2027-01-21','2027-01-23'),
+('84','2026-12-28','2027-02-25','2027-02-27'),
+('85','2027-01-18','2027-03-18','2027-03-20'),
+]
+for attempt, start, end, exam in COS_ROWS:
+    url = 'https://www.ybmit.com/cos_pro/cos_pro_info.jsp'
+    add_cert('COS Pro 1급', attempt+'회', '접수', start, end, url=url)
+    add_cert('COS Pro 1급', attempt+'회', '시험', exam, url=url, period='14:00')
+
+
+def add_round(cert, attempt, row, url, written_window=True, note=''):
+    # 필기 접수 시작/끝, 필기 시작/끝, 실기 접수 시작/끝, 실기 시작/끝
+    a,b,c,d,e,f,g,h = ['2026-'+v for v in row.split()]
+    add_cert(cert, attempt, '필기 접수', a, b, url=url, note=note)
+    add_cert(cert, attempt, '필기 시험', c, d, url=url, window=written_window, note=note)
+    if e == '2026-09-21':
+        # 공휴일을 접수기간으로 잘못 포함하지 않도록 두 구간으로 표시합니다.
+        key = cert+attempt+'실기접수'
+        add_cert(cert, attempt, '실기 접수 1차 구간', e, '2026-09-23', url=url, completion_id=key)
+        add_cert(cert, attempt, '실기 접수 2차 구간', '2026-09-28', url=url, completion_id=key)
+    else:
+        add_cert(cert, attempt, '실기 접수', e, f, url=url, note=note)
+    add_cert(cert, attempt, '실기 시험', g, h, url=url, window=(g != h), note=note)
+
+
+for attempt, row in [
+('12회','03-03 03-09 04-04 04-04 05-18 05-22 06-20 06-20'),
+('13회','08-03 08-07 09-05 09-05 10-26 10-30 11-28 11-28')]:
+    add_round('빅데이터분석기사', attempt, row,
+              'https://mods.go.kr/menu.es?mid=a10411020100', written_window=False)
+
+ARTICLE_ROWS = {
+'1회':'01-12 01-15 01-30 03-03 03-23 03-26 04-18 05-06',
+'2회':'04-20 04-23 05-09 05-29 06-22 06-25 07-18 08-05',
+'3회':'07-20 07-23 08-07 09-01 09-21 09-28 10-24 11-15',
+}
+for cert, code, rounds in [
+('정보처리기사','1320',['1회','2회','3회']),
+('정보처리산업기사','2290',['1회','2회','3회']),
+('컴퓨터시스템기사','1998',['1회','3회'])]:
+    for attempt in rounds:
+        row = ARTICLE_ROWS[attempt]
+        if cert == '정보처리산업기사' and attempt == '3회':
+            row = row.replace('11-15','11-13')
+        note = ('구 전자계산기기사·전자계산기조직응용기사 통합 종목. 변경된 명칭의 AX 인정 여부는 교육 운영진 확인.'
+                if cert == '컴퓨터시스템기사' else '')
+        add_round(cert, attempt, row,
+                  f'https://www.q-net.or.kr/crf005.do?id=crf00503s02&jmCd={code}&jmInfoDivCcd=B0', note=note)
+
+for attempt, row in [
+('1회','01-06 01-09 01-20 01-24 02-02 02-05 03-14 04-05'),
+('2회','03-16 03-20 04-04 04-09 04-27 04-30 05-30 06-14'),
+('3회','06-08 06-11 06-27 07-02 07-27 07-30 08-29 09-16'),
+('4회','08-24 08-27 09-16 09-21 10-12 10-15 11-14 12-02')]:
+    add_round('프로그래밍기능사', attempt, row,
+              'https://www.q-net.or.kr/crf005.do?id=crf00503s02&jmCd=6921&jmInfoDivCcd=A0',
+              note='구 정보처리기능사. 변경된 명칭의 AX 인정 여부는 교육 운영진 확인.')
+
+TECH_ROWS = {
+'138회':'01-06 01-09 02-07 03-03 03-06 03-30 04-02 05-02 05-16',
+'139회':'04-13 04-16 05-16 06-08 06-11 06-29 07-02 08-01 08-15',
+'140회':'07-13 07-16 08-22 08-31 09-03 10-12 10-15 11-14 11-28',
+}
+for cert, code, rounds in [('정보관리기술사','0601',list(TECH_ROWS)),
+                            ('컴퓨터시스템응용기술사','0622',['138회','140회'])]:
+    url = f'https://www.q-net.or.kr/crf005.do?id=crf00503s02&jmCd={code}'
+    for attempt in rounds:
+        a,b,c,d,e,f,g,h,i = ['2026-'+v for v in TECH_ROWS[attempt].split()]
+        add_cert(cert,attempt,'필기 접수',a,b,url=url)
+        add_cert(cert,attempt,'필기 시험',c,url=url)
+        for label, start, end in [('1차',d,e),('2차',f,g)]:
+            add_cert(cert,attempt,'면접 접수 '+label,start,end,url=url,
+                     note='필기 면제·합격 등 응시자 구분에 따라 적용되는 접수기간이 다릅니다.',
+                     completion_id=cert+attempt+'면접접수')
+        add_cert(cert,attempt,'면접 시험',h,i,url=url,window=True)
+
+for cert in ['정보보안기사','정보보안산업기사']:
+    for attempt, row in [
+    ('1회','01-26 01-29 02-09 03-06 03-16 03-19 04-11 04-26'),
+    ('2회','05-11 05-14 05-22 06-15 06-22 06-25 07-25 08-09'),
+    ('4회','08-31 09-03 09-14 10-08 10-19 10-22 11-14 11-29')]:
+        add_round(cert,attempt,row,'https://www.cq.or.kr/qh_quagm03_001.do',
+                  note='연간 시행계획의 기간입니다. 종목별 실제 응시일은 회차별 공고·수험표로 확인하세요.')
+
+for attempt, exam in [('1차','2026-08-08'),('2차','2026-10-31')]:
+    add_cert('소프트웨어 보안약점 진단원',attempt,'시험',exam,
+             url='https://www.kisa.or.kr/401/form?postSeq=3681',
+             note='기본교육 이수 등 응시요건 확인 필요. 접수기간은 확인되지 않아 미등록.')
+
+for attempt, deadline, exam, url in [
+('63회','2026-05-15','2026-05-30','https://www.ipmc.kr/board/read.jsp?code=notice&id=1941706&ln=board&page=13'),
+('64회','2026-11-06','2026-11-21','https://www.ipmc.kr/board/read.jsp?code=notice&id=1966256')]:
+    for stage, day in [('접수 마감',deadline),('필기 시험',exam)]:
+        add_cert('IT-PMP',attempt,stage,day,url=url,evidence='교육기관 게재 공고',
+                 note='시행기관 원문 미대조. 접수 시작일 미확인. 기본 표시에서 제외.')
+    if attempt == '63회':
+        add_cert('IT-PMP',attempt,'면접 시험','2026-06-20',url=url,evidence='교육기관 게재 공고')
+
+# 공식 문서 대조: 사용자 확인(2026-11-17). 원문 파일 자체는 앱에 포함하지 않습니다.
+for attempt, row in [
+    ('36회', '01-05 01-09 02-07 02-07 03-30 04-03 05-02 05-02'),
+    ('37회', '07-06 07-10 08-08 08-08 09-14 09-18 10-17 10-17'),
+]:
+    add_round('데이터분석전문가(ADP)', attempt, row,
+              'https://www.dataq.or.kr/', written_window=False)
+for attempt, start, end, exam in [
+    ('65회', '2026-02-09', '2026-02-13', '2026-03-21'),
+    ('66회', '2026-08-14', '2026-08-21', '2026-09-19'),
+]:
+    add_cert('데이터아키텍처전문가(DAP)', attempt, '접수', start, end,
+             url='https://www.dataq.or.kr/')
+    add_cert('데이터아키텍처전문가(DAP)', attempt, '시험', exam,
+             url='https://www.dataq.or.kr/')
+for item in CERT_EVENTS:
+    if item['cert'] in ('데이터분석전문가(ADP)', '데이터아키텍처전문가(DAP)'):
+        item['source'] = 'DataQ 공식 문서 · 사용자 대조 확인 2026-11-17'
+        item['evidence'] = '공식 문서 · 사용자 확인'
+
+# 접수 목적지와 일정 근거 URL은 별개로 관리합니다.
+def registration_destination(cert):
+    if cert == 'COS Pro 1급':
+        return ('https://www.ybmit.com/test_rec/gen_rec.jsp', '시험 접수하기',
+                'COS Pro 선택 후 로그인하여 접수하세요.')
+    if cert in ('빅데이터분석기사', '데이터분석전문가(ADP)', '데이터아키텍처전문가(DAP)'):
+        return ('https://www.dataq.or.kr/', 'DataQ 접수 사이트로 이동',
+                '로그인 → 원서접수에서 종목을 선택하세요.')
+    if cert in ('정보보안기사', '정보보안산업기사'):
+        return ('https://www.cq.or.kr/main.do', 'KCA 접수 사이트로 이동',
+                '국가자격 원서접수 → 로그인 후 종목을 선택하세요.')
+    if cert == '소프트웨어 보안약점 진단원':
+        return ('https://swsca.kr/', '진단원 시험 신청 창구로 이동',
+                'SW개발보안 교육 전용창구에서 이수시험을 신청하세요.')
+    if cert == 'IT-PMP':
+        return ('http://www.pmo.or.kr/', 'IT-PMP 접수 사이트로 이동',
+                '원서접수 메뉴를 이용하세요. 접속이 안 되면 공고의 이메일 접수 방법을 확인하세요.')
+    return ('https://www.q-net.or.kr/rcv202.do?gId=&gSite=Q&id=rcv20210',
+            'Q-Net 원서접수 신청', '로그인 후 종목과 회차를 선택하세요.')
+
+
+CERT_NAMES = sorted({e['cert'] for e in CERT_EVENTS})
+DEFAULT_CERTS = [name for name in CERT_NAMES if name != 'IT-PMP']
+
+
+def remember_cert_filter():
+    st.session_state.cert_preferences = list(st.session_state.cert_filter)
+
+
+def visible_events():
+    chosen = st.session_state.get('cert_preferences', DEFAULT_CERTS)
+    return [e for e in st.session_state.calendar_events
+            if not e.get('cert') or e['cert'] in chosen]
+
+
+def nearest_cert_exams(day):
+    """선택일 이후(진행 중 포함) 자격증별 가장 가까운 시험 한 개."""
+    visible = [e for e in visible_events() if e.get('cert')]
+    nearest = []
+    for cert in st.session_state.get('cert_preferences', DEFAULT_CERTS):
+        exams = [e for e in visible if e['cert'] == cert
+                 and '접수' not in e['stage'] and date.fromisoformat(e['end']) >= day]
+        if not exams:
+            continue
+        exam = min(exams, key=lambda e: (max(e['start'], day.isoformat()), e['end'], e['id']))
+        phase = exam['stage'].replace(' 시험', '')
+        registrations = [e for e in visible
+                         if e['cert'] == cert and e['attempt'] == exam['attempt']
+                         and '접수' in e['stage']
+                         and (phase == '시험' or e['stage'].startswith(phase))]
+        nearest.append((exam, sorted(registrations, key=lambda e: e['start'])))
+    return sorted(nearest, key=lambda pair: (max(pair[0]['start'], day.isoformat()), pair[0]['cert']))
+
+
+def task_key(item, day):
+    return item.get('completion_id', item['id']) + (':' + day.isoformat() if item.get('mode') == 'daily' else '')
+
+
+def update_done(task_id, widget_key):
+    st.session_state.calendar_done[task_id] = st.session_state[widget_key]
+
+
+def navigate(page):
+    st.session_state.active_page = page
+
+
+st.session_state.setdefault('active_page', 'home')
+st.session_state.setdefault('calendar_done', {})
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "selected_date" not in st.session_state:
-    st.session_state.selected_date = date.today()
+if "pending_prompt" not in st.session_state:
+    st.session_state.pending_prompt = None
 
-if "calendar_year" not in st.session_state:
-    st.session_state.calendar_year = date.today().year
-
+# 달력/출결/일정 데이터
 if "calendar_month" not in st.session_state:
-    st.session_state.calendar_month = date.today().month
+    st.session_state.calendar_month = korea_today().replace(day=1)
 
-if "menu" not in st.session_state:
-    st.session_state.menu = "🏠 홈"
+if "selected_calendar_date" not in st.session_state:
+    st.session_state.selected_calendar_date = korea_today()
 
-# 최초 접속 시 프로필 설정을 먼저 보여주기 위한 상태
-if "profile_completed" not in st.session_state:
-    st.session_state.profile_completed = False
+if "calendar_events" not in st.session_state:
+    st.session_state.calendar_events = [
+        {**e, 'type': e['category'], 'memo': e['description'], 'official': True}
+        for e in EVENTS
+    ]
 
-if "user_profile" not in st.session_state:
-    st.session_state.user_profile = {
-        "name": "",
-        "stage": "에이블러(교육생)",
-        "track": "DX 컨설턴트 트랙",
-        "company": "",
-        "job": "",
-    }
+# 공식 시험 데이터만 갱신하며 개인 일정과 완료 기록은 유지합니다.
+st.session_state.calendar_events = [
+    e for e in st.session_state.calendar_events if not e.get('cert')
+] + CERT_EVENTS
+st.session_state.setdefault('cert_preferences', DEFAULT_CERTS.copy())
 
-if "uploaded_documents" not in st.session_state:
-    st.session_state.uploaded_documents = []
+if "attendance_records" not in st.session_state:
+    st.session_state.attendance_records = {}
 
-if "document_preview" not in st.session_state:
-    st.session_state.document_preview = None
 
-if "ontology_tab" not in st.session_state:
-    st.session_state.ontology_tab = "지식 그래프"
+def events_on(day):
+    """해당 날짜에 진행 중인 일정 목록을 반환합니다."""
+    result = []
+    for event in visible_events():
+        start = date.fromisoformat(event["start"])
+        end = date.fromisoformat(event["end"])
+        if start <= day <= end:
+            result.append(event)
+    return result
 
-if "ontology_query_result" not in st.session_state:
-    st.session_state.ontology_query_result = None
 
+# 검색창 콜백
+def submit_search():
 
-# =========================================================
-# 5. 공통 HTML 함수
-# =========================================================
+    value = st.session_state.get(
+        "search_input", ""
+    ).strip()
 
-def section_title(number, title):
+    if value:
+        st.session_state.pending_prompt = value
 
-    st.markdown(
-        f"""
-        <div class="section-title">
-            <span class="section-number">{number:02d}.</span>
-            {title}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
 
-
-def info_card(icon, title, description):
-
-    st.markdown(
-        f"""
-        <div class="info-card">
-            <div class="card-icon">{icon}</div>
-            <h3 style="text-align:center;">{title}</h3>
-            <p style="text-align:center;">{description}</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-def subject_card(icon, title, description):
-
-    st.markdown(
-        f"""
-        <div class="subject-card">
-            <div class="subject-icon">{icon}</div>
-            <h4>{title}</h4>
-            <p>{description}</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# =========================================================
-# 6. 프로필 설정 및 맞춤 추천 질문
-# =========================================================
-
-def get_recommended_questions():
-    """사용자 단계, 트랙, 희망 기업/직무를 반영한 추천 질문을 반환합니다."""
-    profile = st.session_state.get("user_profile", {})
-    stage = profile.get("stage", "에이블러(교육생)")
-    track = profile.get("track", "DX 컨설턴트 트랙")
-    company = profile.get("company", "").strip()
-    job = profile.get("job", "").strip()
-
-    if stage == "예비 에이블러":
-        stage_question = "KT 에이블스쿨 지원 자격과 선발 절차를 알려주세요."
-        stage_question_2 = "교육 시작 전 미리 준비하면 좋은 기초 역량은 무엇인가요?"
-    elif stage == "수료자(1년)":
-        stage_question = "수료 후 취업 준비 로드맵을 단계별로 알려주세요."
-        stage_question_2 = "프로젝트 경험을 자기소개서와 면접에서 활용하는 방법은?"
-    else:
-        stage_question = "현재 교육 단계에서 우선적으로 복습해야 할 내용은 무엇인가요?"
-        stage_question_2 = "미니프로젝트 결과물을 포트폴리오로 정리하는 방법은?"
-
-    if "AI 개발자" in track:
-        track_question = "AI 개발자에게 필요한 Python·머신러닝·딥러닝 역량은 무엇인가요?"
-        track_question_2 = "AI 개발자 트랙 프로젝트를 기술 면접에서 설명하는 방법은?"
-    else:
-        track_question = "DX 컨설턴트에게 필요한 데이터 분석 및 비즈니스 문제 해결 역량은?"
-        track_question_2 = "데이터 분석 프로젝트를 DX 컨설턴트 직무 성과로 표현하는 방법은?"
-
-    questions = [stage_question, track_question]
-    if company:
-        questions.append(f"{company}의 채용 준비 시 중점적으로 확인해야 할 역량은?")
-    if job:
-        questions.append(f"희망 직무인 {job}에 맞는 포트폴리오 구성 방법은?")
-    questions.extend([stage_question_2, track_question_2])
-    return questions[:5]
-
-
-def page_profile():
-    profile = st.session_state.user_profile
-    st.markdown("""
-    <div class="hero" style="min-height:110px; margin-bottom:18px;">
-        <div>
-            <h1 style="font-size:27px;">AIVLE School 학습 도우미 👋</h1>
-            <p style="margin:8px 0 0; color:#55718a;">먼저 프로필을 설정하면, 단계와 트랙에 맞는 안내와 챗봇 답변을 보여드려요.</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    left, form_col = st.columns([0.42, 1.58], gap="large")
-    with left:
-        st.markdown("""
-        <div class="right-card" style="text-align:center; padding:30px 18px;">
-            <div style="font-size:55px;">👩🏻‍💻</div>
-            <h3 style="color:#193653;">나에게 맞는 학습 도우미</h3>
-            <p>현재 상황과 목표를 알려주시면<br>맞춤형 학습·취업 정보를 추천해 드립니다.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("""
-        <div class="info-card" style="margin-top:14px;">
-            <h3>🔒 프로필 정보 안내</h3>
-            <p>입력한 정보는 이 앱의 추천 질문과 화면 안내를 개인화하는 데 사용됩니다.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with form_col:
-        st.markdown('<div class="section-title"><span class="section-number">01.</span> 프로필 설정</div>', unsafe_allow_html=True)
-        with st.form("profile_setup_form"):
-            name = st.text_input("이름 (닉네임)", value=profile.get("name", ""), placeholder="예: 홍길동")
-            stage = st.radio(
-                "현재 단계",
-                ["예비 에이블러", "에이블러(교육생)", "수료자(1년)"],
-                index=["예비 에이블러", "에이블러(교육생)", "수료자(1년)"].index(profile.get("stage", "에이블러(교육생)")),
-                horizontal=True
-            )
-            track = st.radio(
-                "트랙",
-                ["DX 컨설턴트 트랙", "AI 개발자 트랙"],
-                index=0 if "DX" in profile.get("track", "DX") else 1,
-                horizontal=True
-            )
-            company = st.text_input("희망 기업 (선택)", value=profile.get("company", ""), placeholder="예: KT, 금융권, 공기업")
-            job = st.text_input("희망 직무 (선택)", value=profile.get("job", ""), placeholder="예: DX 컨설턴트, 데이터 분석가")
-            submitted = st.form_submit_button("시작하기 →", use_container_width=True, type="primary")
-
-            if submitted:
-                st.session_state.user_profile = {
-                    "name": name.strip(),
-                    "stage": stage,
-                    "track": track,
-                    "company": company.strip(),
-                    "job": job.strip(),
-                }
-                st.session_state.profile_completed = True
-                st.session_state.menu = "🏠 홈"
-                st.rerun()
-
-
-# =========================================================
-# 7. 왼쪽 사이드바
-# =========================================================
-
-menu_items = [
-    "🏠 홈",
-    "👋 소개",
-    "📚 교육과정",
-    "💼 취업과정",
-    "📁 포트폴리오",
-    "📂 파일 불러오기",
-    "🕸️ 온톨로지"
-]
-
-if st.session_state.profile_completed:
-    with st.sidebar:
-
-        # AIVLE 로고
-        st.markdown("""
-        <div class="logo-box">
-            <div class="logo-main">◢ AIVLE</div>
-            <div class="logo-sub">AIVLE SCHOOL</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # 라디오 버튼 대신 일반 버튼으로 메뉴 구성
-        for item in menu_items:
-            if st.button(
-                item,
-                key=f"nav_{item}",
-                use_container_width=True,
-                type="primary" if st.session_state.menu == item else "secondary"
-            ):
-                st.session_state.menu = item
-                st.rerun()
-
-        st.markdown("<br><hr>", unsafe_allow_html=True)
-
-        # 바로가기: 페이지 이름을 한글로 표시하고 글자색을 진하게 고정
-        st.markdown("<br><hr>", unsafe_allow_html=True)
-        st.markdown("#### 🔗 바로가기")
-
-        shortcut_links = [
-            ("🎓", "에이블 에듀 LMS", "https://aivle.edu.kt.co.kr"),
-            ("🏫", "에이블스쿨 공식 홈페이지", "https://aivle.kt.co.kr/home/main/indexMain"),
-            ("📸", "에이블스쿨 인스타그램", "https://www.instagram.com/aivlestory?igshid=YmMyMTA2M2Y%3D"),
-            ("💼", "취업지원 플랫폼", "https://aivle10.univjob.co.kr"),
-        ]
-
-        for link_icon, link_label, link_url in shortcut_links:
-            st.markdown(
-                f"""
-                <a class="sidebar-shortcut-link"
-                   href="{link_url}" target="_blank" rel="noopener noreferrer">
-                    <span class="shortcut-label">
-                        <span class="shortcut-icon">{link_icon}</span>
-                        <span>{link_label}</span>
-                    </span>
-                    <span class="shortcut-arrow">↗</span>
-                </a>
-                """,
-                unsafe_allow_html=True
-            )
-
-        st.markdown("""
-        <br><br>
-        <div style="font-size:12px; line-height:1.8; color:white;">
-            AIVLE School<br>
-            Learning Assistant
-        </div>
-        """, unsafe_allow_html=True)
-
-# =========================================================
-# 7. 오른쪽 공통 패널
-# =========================================================
-
-def right_panel():
-
-    # 홈 화면의 Assistant 카드에 프로필에서 선택한 현재 단계를 표시합니다.
-    current_stage = st.session_state.get("user_profile", {}).get("stage", "에이블러(교육생)")
-    stage_html = ""
-    if st.session_state.get("menu") == "🏠 홈":
-        stage_html = f'<div class="profile-stage-badge">현재 단계&nbsp; · &nbsp;{escape(current_stage)}</div>'
-
-    st.markdown(f"""
-    <div class="right-card" style="text-align:center;">
-        <div class="assistant-icon">👩🏻‍💻</div>
-        <h3 style="margin-top:12px;">AIVLE Assistant</h3>
-        <p>Your Learning Partner</p>
-        {stage_html}
-    </div>
-
-    <div class="right-card">
-        <h3>📘 학습 도우미 안내</h3>
-        <p>
-            AIVLE School 교육 자료를 기반으로
-            질문에 대한 답변을 제공합니다.
-        </p>
-        <b style="color:#193653;font-size:13px;">
-            RAG 기반 문서 검색
-        </b>
-        <p>관련 문서를 검색하고 답변을 생성합니다.</p>
-    </div>
-
-    <div style="font-size:18px;font-weight:900;
-                color:#193653;margin:20px 0 12px;">
-        💡 맞춤 추천 질문
-    </div>
-
-    """, unsafe_allow_html=True)
-
-    for question in get_recommended_questions():
-        st.markdown(
-            f'<div class="question-item">{escape(question)}</div>',
-            unsafe_allow_html=True
-        )
-
-    st.markdown("""
-    <div class="right-card" style="margin-top:25px;">
-        <h3>🕒 Recent Activity</h3>
-        <p>최근 대화 기록</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if st.session_state.messages:
-
-        for msg in reversed(st.session_state.messages[-4:]):
-            if isinstance(msg, HumanMessage):
-                st.caption("🙋 " + msg.content[:35])
-
-    else:
-        st.caption("아직 대화 기록이 없습니다.")
-
-
-# =========================================================
-# 8. 홈 화면
-# =========================================================
-
-def page_home():
-
-    st.markdown(f"""
-    <div class="page-title">Hello, {escape(st.session_state.user_profile.get("name") or "AIVLE")}! 👋</div>
-    <div class="page-subtitle">{escape(st.session_state.user_profile.get("stage", "에이블러(교육생)"))} · {escape(st.session_state.user_profile.get("track", "DX 컨설턴트 트랙"))}에 맞춘 학습을 시작해 보세요.</div>
-    """, unsafe_allow_html=True)
-
-    c1, c2 = st.columns([1, 1])
-
-    with c1:
-        st.markdown("""
-        <div class="welcome-card welcome-one">
-            <h3>Welcome back! ✨</h3>
-            <p>
-                AIVLE School 학습 도우미입니다.<br>
-                교육 과정, 강의 내용, 미니프로젝트 등<br>
-                궁금한 내용을 자유롭게 질문해 보세요!
-            </p>
-            <div style="text-align:right;font-size:25px;">💻 💬</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c2:
-        st.markdown("""
-        <div class="welcome-card welcome-two">
-            <h3>Learning Guide 📚</h3>
-            <p>
-                여러분의 학습을 도와드릴게요.<br>
-                문서 기반 RAG 시스템을 활용하여<br>
-                필요한 정보를 빠르게 찾아보세요.
-            </p>
-            <div style="text-align:right;font-size:25px;">💡 📚</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    section_title(1, "Quick Menu")
-
-    q1, q2, q3 = st.columns(3)
-
-    with q1:
-        info_card("📚", "학습 자료", "교육 문서 기반 질문")
-
-    with q2:
-        info_card("🧠", "학습 Q&A", "AI 문서 검색 및 답변")
-
-    with q3:
-        info_card("🚀", "미니프로젝트", "프로젝트 정보 확인")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    section_title(2, "출결 & 일정 관리")
-
-    st.markdown("""
-    <p class="small-text">
-        교육 일정과 개인 학습 일정을 확인하고 출결 상태를 기록해 보세요.
-    </p>
-    """, unsafe_allow_html=True)
-
-    # 달력 월 이동
-    prev_col, month_col, next_col = st.columns([1, 5, 1])
-
-    with prev_col:
-        if st.button("‹", key="prev_month"):
-            st.session_state.calendar_month -= 1
-
-            if st.session_state.calendar_month < 1:
-                st.session_state.calendar_month = 12
-                st.session_state.calendar_year -= 1
-
-            st.rerun()
-
-    with month_col:
-        st.markdown(
-            f"""
-            <h3 style="text-align:center;color:#193653;">
-                {st.session_state.calendar_year}년
-                {st.session_state.calendar_month}월
-            </h3>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with next_col:
-        if st.button("›", key="next_month"):
-            st.session_state.calendar_month += 1
-
-            if st.session_state.calendar_month > 12:
-                st.session_state.calendar_month = 1
-                st.session_state.calendar_year += 1
-
-            st.rerun()
-
-    st.markdown('<div class="calendar-box">', unsafe_allow_html=True)
-
-    cal = calendar.monthcalendar(
-        st.session_state.calendar_year,
-        st.session_state.calendar_month
-    )
-
-    weekdays = ["일", "월", "화", "수", "목", "금", "토"]
-
-    html = '<div class="calendar-grid">'
-
-    for day in weekdays:
-        html += f'<div class="calendar-head">{day}</div>'
-
-    for week in cal:
-        for day in week:
-
-            if day == 0:
-                html += '<div class="calendar-day" style="border:none;"></div>'
-
-            else:
-                today_class = ""
-
-                if (
-                    day == date.today().day
-                    and st.session_state.calendar_month == date.today().month
-                    and st.session_state.calendar_year == date.today().year
-                ):
-                    today_class = "today"
-
-                html += f'<div class="calendar-day {today_class}">{day}</div>'
-
-    html += '</div>'
-
-    st.markdown(html, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.caption("📌 오늘 날짜는 강조 표시됩니다.")
-
-
-# =========================================================
-# 9. 소개 페이지
-# =========================================================
-
+# ==========================================
+# 5. 사이드바
+# ==========================================
 def page_intro():
-
+    st.markdown('<div class="page-title">🙋 에이블스쿨 소개</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="page-sub">{S["label"]}에게 맞춘 소개 · 자세한 내용은 오른쪽 챗봇에 물어보세요</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="page-title">👋 소개</div>
-
-    <div class="hero">
-        <div>
-            <h1>AIVLE School 학습 도우미 소개</h1>
-            <h3>AIVLE School 교육생을 위한 맞춤형 학습 지원 서비스</h3>
-            <p>
-                KT AIVLE School의 교육 과정, 학습 자료, 프로젝트, 취업 준비까지<br>
-                교육생이 궁금한 내용을 빠르고 정확하게 안내하는<br>
-                RAG 기반 AI 학습 도우미입니다.
-            </p>
-        </div>
-        <div class="hero-icon">🤖💡</div>
+    <div class="white-card">
+    <b>KT 에이블스쿨(AIVLE School)</b>은 고용노동부 'KDT 첨단산업·디지털 선도기업 아카데미' 사업으로 운영되는
+    청년 대상 AI·클라우드 실무 인재 양성 과정임. 10기는 2026.9.29 ~ 2027.3.5, 총 106일 840시간임.
+    </div>""", unsafe_allow_html=True)
+    t1, t2 = st.columns(2, gap="medium")
+    with t1:
+        st.markdown("""<div class="white-card"><b>🤖 AI 개발자 트랙</b><br><br>
+        AI와 Cloud로 서비스를 구현하는 개발자<br>코드를 짜서 무언가를 만드는 데서 보람을 느끼는 사람</div>""",
+                    unsafe_allow_html=True)
+    with t2:
+        st.markdown("""<div class="white-card"><b>📊 DX 컨설턴트 트랙</b><br><br>
+        AI와 Cloud로 기업의 디지털 전환을 주도하는 촉진자<br>문제를 정의하고 근거를 들어 설득하는 데 강점이 있는 사람</div>""",
+                    unsafe_allow_html=True)
+    return "에이블스쿨 소개 화면(운영 기관, 10기 기간, AI 개발자 트랙과 DX 컨설턴트 트랙 비교)"
+def page_edu():
+    """참고 이미지의 AIVLE School 교육과정 대시보드 화면."""
+    st.html("""
+    <div class="page-title">📚 교육과정</div>
+    <div class="page-sub">AIVLE School Curriculum</div>
+    <div class="edu-hero">
+      <div>
+        <div class="edu-hero-title">배움에서 실무까지, 성장의 여정 🚀</div>
+        <div class="edu-hero-desc">체계적인 교육과 프로젝트를 통해<br>AI·DX 실무 역량을 키워보세요.</div>
+      </div>
+      <div class="edu-hero-art">📊 🤖 💻</div>
     </div>
-    """, unsafe_allow_html=True)
+    <div class="edu-section-head"><span class="edu-section-no">01.</span> 교육 트랙 선택</div>
+    """)
 
-    section_title(1, "AIVLE School이란?")
+    track1, track2 = st.columns(2, gap="small")
+    with track1:
+        st.html("""<div class="edu-track ai"><div class="track-icon">💻</div><h3>AI 개발자 트랙</h3><p>AI 모델 개발 및 서비스 구현 중심 교육<br><b>AI Developer</b></p></div>""")
+    with track2:
+        st.html("""<div class="edu-track dx"><div class="track-icon">📊</div><h3>DX 컨설턴트 트랙</h3><p>데이터 분석과 AI를 활용한 비즈니스 문제 해결<br><b>DX Consultant</b></p></div>""")
 
-    st.markdown("""
-    <div class="info-card">
-        <div style="display:flex;align-items:center;gap:20px;">
-            <div style="font-size:36px;font-weight:900;color:#333;">
-                kt
-            </div>
-            <div style="width:1px;height:55px;background:#dce8ee;"></div>
-            <div style="flex:1;">
-                <h3>KT AIVLE School</h3>
-                <p style="font-size:14px;">
-                    KT가 운영하는 AI·DX 실무형 인재 양성 프로그램으로,<br>
-                    기업 현장에서 요구하는 디지털 역량을 갖춘 인재를 육성합니다.
-                </p>
-            </div>
-            <div style="background:#e8f8f9;border-radius:15px;padding:15px;">
-                <b style="color:#17aeb7;">⚙️ AI</b><br>
-                <small>인공지능 역량</small>
-            </div>
-            <div style="background:#edf5ff;border-radius:15px;padding:15px;">
-                <b style="color:#5089e8;">◈ DX</b><br>
-                <small>디지털 전환 역량</small>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    left, right = st.columns([1, 2])
-
-    with left:
-
-        section_title(2, "교육 트랙 소개")
-
-        st.markdown("""
-        <div class="track-card track-ai">
-            <div style="font-size:35px;">💻</div>
-            <h2>AI 개발자</h2>
-            <p>
-                AI 모델과 서비스 개발을 통해<br>
-                실무형 AI 서비스 구현 역량을 강화
-            </p>
-        </div>
-        <br>
-        <div class="track-card track-dx">
-            <div style="font-size:35px;">📊</div>
-            <h2>DX 컨설턴트</h2>
-            <p>
-                데이터 분석과 AI를 활용한<br>
-                기업 문제 해결 및 디지털 전환 기획
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with right:
-
-        section_title(3, "주요 교육 분야")
-
-        subjects = [
-            ("🐍", "프로그래밍·데이터 분석", "Python, 데이터 처리 및 시각화"),
-            ("🧠", "머신러닝·딥러닝", "AI 모델 학습과 평가"),
-            ("🤖", "생성형 AI", "LLM 및 프롬프트 엔지니어링"),
-            ("☁️", "클라우드", "클라우드 인프라와 서비스")
-        ]
-
-        for row in range(2):
-
-            cols = st.columns(2)
-
-            for col_idx in range(2):
-                icon, title, desc = subjects[row * 2 + col_idx]
-
-                with cols[col_idx]:
-                    subject_card(icon, title, desc)
-
-    section_title(4, "교육 진행 과정")
-
+    st.html('<div class="edu-section-head"><span class="edu-section-no">02.</span> 교육 진행 로드맵</div>')
     steps = [
-        ("📖", "01", "이론 및 실습", "기초 기술과 핵심 개념 학습"),
-        ("💻", "02", "미니 프로젝트", "학습한 기술을 활용한 문제 해결 경험"),
-        ("🚀", "03", "빅 프로젝트", "실제 문제 발굴부터 결과물 구현 및 발표")
-    ]
-
-    cols = st.columns(3)
-
-    for i, (icon, number, title, desc) in enumerate(steps):
-
-        with cols[i]:
-            st.markdown(f"""
-            <div class="roadmap-card">
-                <div class="roadmap-icon">{icon}</div>
-                <span class="step">STEP {number}</span>
-                <h3>{title}</h3>
-                <p>{desc}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    section_title(5, "교육을 통해 기르는 핵심 역량")
-
-    skills = [
-        ("💡", "문제 해결 역량", "실무 문제를 정의하고 데이터·AI로 해결"),
-        ("📊", "데이터 활용 역량", "데이터 수집·분석·해석을 통한 인사이트 도출"),
-        ("👥", "협업·소통 역량", "팀 프로젝트를 통한 효과적인 협업과 의사소통"),
-        ("🎯", "프로젝트 수행 역량", "기획부터 구현, 발표까지 프로젝트 경험")
-    ]
-
-    cols = st.columns(4)
-
-    for i, (icon, title, desc) in enumerate(skills):
-
-        with cols[i]:
-            info_card(icon, title, desc)
-
-    st.markdown("""
-    <div class="bottom-banner">
-        <div style="display:flex;align-items:center;gap:25px;">
-            <div style="font-size:40px;">◢</div>
-            <div>
-                <h2>Your Next Step with AIVLE School!</h2>
-                <p>AIVLE School과 함께, AI와 DX로 더 큰 성장의 기회를 만들어보세요.</p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# =========================================================
-# 10. 교육과정 페이지
-# =========================================================
-
-def page_education():
-
-    st.markdown("""
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-            <div class="page-title">📚 교육과정</div>
-            <div class="page-subtitle">AIVLE School Curriculum</div>
-        </div>
-        <div style="
-            background:#34b58e;color:white;padding:7px 18px;
-            border-radius:20px;font-size:13px;font-weight:900;">
-            CURRICULUM
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="hero">
-        <div>
-            <h1>배움에서 실무까지, 성장의 여정 🚀</h1>
-            <p style="font-size:16px;">
-                체계적인 교육과 프로젝트를 통해<br>
-                AI·DX 실무 역량을 키워보세요.
-            </p>
-        </div>
-        <div class="hero-icon">👩🏻‍💻📊</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 교육 트랙 선택
-    section_title(1, "교육 트랙 선택")
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.markdown("""
-        <div class="track-card track-ai" style="min-height:140px;">
-            <div style="display:flex;align-items:center;gap:18px;">
-                <div style="font-size:45px;">💻</div>
-                <div>
-                    <h2>AI 개발자 트랙</h2>
-                    <p>AI 모델 개발 및 서비스 구현 중심 교육</p>
-                    <span style="
-                        background:white;color:#2399ac;
-                        border-radius:20px;padding:5px 14px;
-                        font-size:12px;font-weight:800;">
-                        AI Developer
-                    </span>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c2:
-        st.markdown("""
-        <div class="track-card track-dx" style="min-height:140px;">
-            <div style="display:flex;align-items:center;gap:18px;">
-                <div style="font-size:45px;">📊</div>
-                <div>
-                    <h2>DX 컨설턴트 트랙</h2>
-                    <p>데이터 분석과 AI를 활용한 비즈니스 문제 해결</p>
-                    <span style="
-                        background:white;color:#518be0;
-                        border-radius:20px;padding:5px 14px;
-                        font-size:12px;font-weight:800;">
-                        DX Consultant
-                    </span>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # 교육 로드맵
-    section_title(2, "교육 진행 로드맵")
-
-    roadmap = [
         ("💻", "STEP 01", "기초 역량 학습", "Python, SQL,<br>데이터 분석 등"),
         ("⚙️", "STEP 02", "AI·DX 심화 학습", "머신러닝, 딥러닝,<br>생성형 AI, 클라우드"),
         ("👥", "STEP 03", "미니 프로젝트", "학습한 기술을 활용한<br>실습 및 팀 프로젝트"),
         ("🚀", "STEP 04", "빅 프로젝트", "실제 비즈니스 문제 해결 및<br>서비스 구현")
     ]
+    step_cols = st.columns(4, gap="small")
+    for col, (icon, label, title, desc) in zip(step_cols, steps):
+        with col:
+            st.html(f'<div class="edu-step"><div class="edu-step-icon">{icon}</div><div class="edu-step-label">{label}</div><div class="edu-step-title">{title}</div><div class="edu-step-desc">{desc}</div></div>')
 
-    cols = st.columns(4)
+    st.html('<div class="edu-section-head"><span class="edu-section-no">03.</span> 주요 학습 분야</div>')
+    topics = [
+        ("🐍", "Python", "프로그래밍 기초 및<br>데이터 처리"),
+        ("📊", "데이터 분석", "데이터 전처리·분석·시각화"),
+        ("🛢️", "SQL", "데이터베이스·데이터 조회"),
+        ("🤖", "머신러닝", "AI 모델 학습과 평가"),
+        ("🧠", "딥러닝", "신경망 기반 모델 학습"),
+        ("✨", "생성형 AI", "LLM, 프롬프트 엔지니어링,<br>RAG 활용")
+    ]
+    topic_rows = [topics[:3], topics[3:]]
+    for row in topic_rows:
+        cols = st.columns(3, gap="small")
+        for col, (icon, title, desc) in zip(cols, row):
+            with col:
+                st.html(f'<div class="edu-topic"><div class="edu-topic-icon">{icon}</div><div class="edu-topic-title">{title}</div><div class="edu-topic-desc">{desc}</div></div>')
 
-    for i, (icon, step, title, desc) in enumerate(roadmap):
+    st.html('<div class="edu-section-head"><span class="edu-section-no">04.</span> 프로젝트 학습</div>')
+    project_col1, project_col2 = st.columns(2, gap="small")
+    with project_col1:
+        st.html("""<div class="edu-project"><h4>📋 미니 프로젝트</h4><p>✔ 학습 내용을 실제로 적용<br>✔ 개인 및 팀 기반 프로젝트 수행<br>✔ 결과 발표 및 피드백</p></div>""")
+    with project_col2:
+        st.html("""<div class="edu-project"><h4>🚀 빅 프로젝트</h4><p>✔ 실제 비즈니스 문제 발굴<br>✔ AI 기반 서비스 기획 및 구현<br>✔ 최종 결과물 발표 및 성과 공유</p></div>""")
 
-        with cols[i]:
-
-            st.markdown(f"""
-            <div class="roadmap-card" style="min-height:150px;">
-                <div class="roadmap-icon">{icon}</div>
-                <span class="step">{step}</span>
-                <h3>{title}</h3>
-                <p>{desc}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            if i != 3:
-                st.markdown(
-                    "<div style='text-align:center;color:#4e91be;"
-                    "font-size:23px;font-weight:900;'>→</div>",
-                    unsafe_allow_html=True
-                )
-
-    # 주요 학습 분야
-    left, right = st.columns([1.5, 1])
-
-    with left:
-
-        section_title(3, "주요 학습 분야")
-
-        subjects = [
-            ("🐍", "Python", "프로그래밍 기초 및 데이터 처리"),
-            ("📊", "데이터 분석", "데이터 전처리·분석·시각화"),
-            ("🗄️", "SQL", "데이터베이스·데이터 조회"),
-            ("🤖", "머신러닝", "AI 모델 학습과 평가"),
-            ("🧠", "딥러닝", "신경망 기반 모델 학습"),
-            ("✨", "생성형 AI", "LLM, 프롬프트 엔지니어링, RAG 활용")
-        ]
-
-        for row in range(2):
-
-            cols = st.columns(3)
-
-            for j in range(3):
-
-                icon, title, desc = subjects[row * 3 + j]
-
-                with cols[j]:
-                    subject_card(icon, title, desc)
-
-    with right:
-
-        section_title(4, "프로젝트 학습")
-
-        st.markdown("""
-        <div class="project-card">
-            <div style="display:flex;gap:15px;">
-                <div style="font-size:35px;">📋</div>
-                <div>
-                    <h3>미니 프로젝트</h3>
-                    <p>
-                        ✅ 학습 내용을 실제로 적용<br>
-                        ✅ 개인 및 팀 기반 프로젝트 수행<br>
-                        ✅ 결과 발표 및 피드백
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <div class="project-card">
-            <div style="display:flex;gap:15px;">
-                <div style="font-size:35px;">🚀</div>
-                <div>
-                    <h3>빅 프로젝트</h3>
-                    <p>
-                        ✅ 실제 비즈니스 문제 발굴<br>
-                        ✅ AI 기반 서비스 기획 및 구현<br>
-                        ✅ 최종 결과물 발표 및 성과 공유
-                    </p>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # 하단 배너
-    st.markdown("""
-    <div class="bottom-banner">
-        <div style="display:flex;align-items:center;gap:25px;">
-            <div style="font-size:45px;">◢</div>
-            <div>
-                <h2>Your Future Starts Here!</h2>
-                <p>AIVLE School과 함께 실무형 인재로 성장해 보세요.</p>
-            </div>
-        </div>
+    st.html("""<div class="edu-banner"><strong>△　Your Future Starts Here!</strong><br><span>AIVLE School과 함께 실무형 인재로 성장해 보세요.</span></div>""")
+def page_job():
+    """참고 이미지 기반 취업 준비 대시보드."""
+    st.html("""
+    <div class="page-title">💼 취업과정</div>
+    <div class="page-sub">Career &amp; Job Preparation</div>
+    <div class="job-hero">
+      <div>
+        <div class="job-hero-title">AIVLE School 취업 준비 가이드</div>
+        <div class="job-hero-desc">학습부터 포트폴리오, 면접까지<br>실무형 취업 역량을 완성해 보세요!</div>
+      </div>
+      <div class="job-hero-art">📋 👩🏻‍💻 📊</div>
     </div>
-    """, unsafe_allow_html=True)
-
-
-
-
-# =========================================================
-# 11. 취업과정 페이지
-# =========================================================
-
-def page_career():
-
-    st.markdown("""
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-            <div class="page-title">💼 취업과정</div>
-            <div class="page-subtitle">Career &amp; Job Preparation</div>
-        </div>
-        <div style="
-            background:linear-gradient(90deg,#20b8c2,#159eae);
-            color:white;padding:7px 18px;border-radius:20px;
-            font-size:13px;font-weight:900;">
-            JOB PREPARATION
-        </div>
-    </div>
-
-    <div class="hero" style="min-height:145px;">
-        <div>
-            <h1>AIVLE School 취업 준비 가이드</h1>
-            <h3>학습부터 포트폴리오, 면접까지<br>
-                실무형 취업 역량을 완성해 보세요!</h3>
-        </div>
-        <div class="hero-icon">🧑🏻‍💼📈</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 01. 취업 준비 로드맵
-    section_title(1, "취업 준비 로드맵")
+    <div class="job-section-head"><span class="job-section-no">01.</span> 취업 준비 로드맵</div>
+    """)
 
     roadmap = [
         ("🎯", "직무 탐색", "관심 직무 이해 및<br>요구 역량 파악"),
         ("📚", "역량 강화", "교육 과정 기반<br>핵심 역량 확보"),
         ("💻", "포트폴리오", "프로젝트 정리 및<br>성과 도출"),
         ("📄", "서류 준비", "이력서·자기소개서<br>작성"),
-        ("👥", "면접 대비", "기술·인성 면접 및<br>실전 연습")
+        ("👥", "면접 대비", "기술·인성 면접 및<br>실전 연습"),
     ]
-    cols = st.columns(5)
-    for i, (icon, title, desc) in enumerate(roadmap):
-        with cols[i]:
-            st.markdown(f"""
-            <div class="roadmap-card" style="
-                min-height:130px;padding:13px 7px;
-                background:linear-gradient(145deg,#e4f9f7,#edf4ff);">
-                <div class="roadmap-icon">{icon}</div>
-                <h3>{title}</h3>
-                <p>{desc}</p>
+    roadmap_cols = st.columns(5, gap="small")
+    for col, (icon, title, desc) in zip(roadmap_cols, roadmap):
+        with col:
+            st.html(f"""
+            <div class="job-roadmap-card">
+              <div class="job-roadmap-icon">{icon}</div>
+              <div class="job-roadmap-title">{title}</div>
+              <div class="job-roadmap-desc">{desc}</div>
             </div>
-            """, unsafe_allow_html=True)
-            if i < 4:
-                st.markdown(
-                    "<div style='text-align:center;color:#249eb0;"
-                    "font-size:20px;font-weight:900;'>→</div>",
-                    unsafe_allow_html=True
-                )
+            """)
 
-    # 02. 취업 지원 프로그램 / 03. 직무별 정보
-    left, right = st.columns([1, 1.35], gap="medium")
+    st.html('<div class="job-section-head"><span class="job-section-no">02.</span> 주요 취업 지원 프로그램</div>')
+    left_programs, right_role = st.columns([1.05, 1.2], gap="small")
 
-    with left:
-        section_title(2, "주요 취업 지원 프로그램")
+    with left_programs:
         programs = [
             ("🎓", "취업 특강", "현직자 직무 특강 및<br>채용 트렌드 안내"),
             ("📄", "자소서 클리닉", "자기소개서 작성법과<br>1:1 피드백"),
             ("👥", "모의 면접", "실전형 면접 연습 및<br>개별 피드백"),
-            ("🏢", "채용 연계", "KT 및 협력사<br>채용 정보 제공")
+            ("🏢", "채용 연계", "협력사 및 채용 정보<br>탐색과 지원"),
         ]
-        for row in range(2):
-            cols = st.columns(2)
-            for j in range(2):
-                icon, title, desc = programs[row * 2 + j]
-                with cols[j]:
-                    st.markdown(f"""
-                    <div class="info-card" style="
-                        min-height:112px;padding:13px 8px;margin-bottom:10px;">
-                        <div class="card-icon">{icon}</div>
-                        <h3 style="text-align:center;font-size:14px;">{title}</h3>
-                        <p style="text-align:center;">{desc}</p>
+        for row in (programs[:2], programs[2:]):
+            cols = st.columns(2, gap="small")
+            for col, (icon, title, desc) in zip(cols, row):
+                with col:
+                    st.html(f"""
+                    <div class="job-mini-card">
+                      <div class="job-mini-title">{icon}　{title}</div>
+                      <div class="job-mini-desc">{desc}</div>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """)
 
-    with right:
-        section_title(3, "직무별 정보")
-        tab_dx, tab_ai = st.tabs(["DX 컨설턴트", "AI 개발자"])
+    with right_role:
+        st.html('<div class="job-section-head" style="margin-top:0;"><span class="job-section-no">03.</span> 직무별 정보</div>')
+        role = st.radio(
+            "직무 선택",
+            ["DX 컨설턴트", "AI 개발자"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="job_role_choice"
+        )
+        if role == "DX 컨설턴트":
+            role_title = "DX 컨설턴트 (DX Consultant)"
+            role_desc = "데이터와 AI를 활용해 기업의 비즈니스 문제를 분석하고, 디지털 전환을 기획·제안하는 직무입니다."
+            duties = [
+                ("주요 업무", "데이터 분석, DX 과제 기획, 솔루션 제안"),
+                ("요구 역량", "데이터 분석력, 비즈니스 이해, 커뮤니케이션"),
+                ("연관 직무", "데이터 분석가, IT기획, PM, BI 개발자 등"),
+            ]
+            role_icon = "📊"
+        else:
+            role_title = "AI 개발자 (AI Developer)"
+            role_desc = "AI·머신러닝 기술을 활용해 모델과 서비스를 개발하고 실제 업무에 적용하는 직무입니다."
+            duties = [
+                ("주요 업무", "데이터 전처리, 모델 개발·평가, AI 서비스 구현"),
+                ("요구 역량", "Python, 머신러닝·딥러닝, 알고리즘"),
+                ("연관 직무", "AI 엔지니어, ML 엔지니어, 백엔드 개발자 등"),
+            ]
+            role_icon = "💻"
 
-        with tab_dx:
-            st.markdown("""
-            <div class="project-card" style="min-height:220px;">
-                <div style="display:flex;gap:15px;align-items:center;">
-                    <div style="font-size:38px;">📊</div>
-                    <div>
-                        <h3>DX 컨설턴트 (DX Consultant)</h3>
-                        <p>데이터와 AI를 활용해 기업의 비즈니스 문제를 분석하고,
-                        디지털 전환을 기획·제안하는 직무입니다.</p>
-                    </div>
-                </div>
-                <hr>
-                <p><b style="color:#16aeb8;">✓ 주요 업무</b>　데이터 분석, DX 과제 기획, 솔루션 제안</p>
-                <p><b style="color:#16aeb8;">✓ 요구 역량</b>　데이터 분석력, 비즈니스 이해, 커뮤니케이션</p>
-                <p><b style="color:#16aeb8;">✓ 연관 직무</b>　데이터 분석가, IT기획, PM, BI 개발자 등</p>
-            </div>
-            """, unsafe_allow_html=True)
+        st.html(f"""
+        <div class="job-role-panel">
+          <div class="job-role-title">{role_icon}　{role_title}</div>
+          <div class="job-role-desc">{role_desc}</div>
+          <div class="job-role-row">""" + "".join(
+              f"<b>✓　{label}</b>　{desc}<br>" for label, desc in duties
+          ) + """</div>
+        </div>
+        """)
 
-        with tab_ai:
-            st.markdown("""
-            <div class="project-card" style="min-height:220px;">
-                <div style="display:flex;gap:15px;align-items:center;">
-                    <div style="font-size:38px;">🤖</div>
-                    <div>
-                        <h3>AI 개발자 (AI Developer)</h3>
-                        <p>AI 모델과 서비스를 개발하고 데이터 기반 문제 해결을
-                        위한 인공지능 기능을 구현하는 직무입니다.</p>
-                    </div>
-                </div>
-                <hr>
-                <p><b style="color:#16aeb8;">✓ 주요 업무</b>　AI 모델 개발, 데이터 전처리, 서비스 구현</p>
-                <p><b style="color:#16aeb8;">✓ 요구 역량</b>　Python, 머신러닝·딥러닝, 알고리즘</p>
-                <p><b style="color:#16aeb8;">✓ 연관 직무</b>　AI 엔지니어, ML 엔지니어, 데이터 엔지니어 등</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # 04. 취업 준비 자료실 / 05. 추천 학습 콘텐츠
-    left, right = st.columns([1.25, 1], gap="medium")
-
-    with left:
-        section_title(4, "취업 준비 자료실")
+    resources_col, contents_col = st.columns([1.2, 1], gap="small")
+    with resources_col:
+        st.html('<div class="job-section-head"><span class="job-section-no">04.</span> 취업 준비 자료실</div>')
         resources = [
-            ("📄", "이력서 템플릿", "경험과 역량을 구조화해 정리"),
-            ("🖊️", "자기소개서 가이드", "문항별 작성 전략과 사례"),
-            ("💬", "면접 질문 모음", "직무·인성 면접 예상 질문"),
-            ("📁", "포트폴리오 예시", "프로젝트 구성 및 성과 표현")
+            ("📄", "이력서 템플릿"),
+            ("🖊️", "자기소개서 가이드"),
+            ("💬", "면접 질문 모음"),
+            ("📁", "포트폴리오 예시"),
         ]
-        cols = st.columns(4)
-        for i, (icon, title, desc) in enumerate(resources):
-            with cols[i]:
-                st.markdown(f"""
-                <div class="info-card" style="
-                    min-height:115px;padding:13px 6px;">
-                    <div class="card-icon">{icon}</div>
-                    <h3 style="text-align:center;font-size:13px;">{title}</h3>
-                    <p style="text-align:center;">{desc}</p>
+        resource_cols = st.columns(4, gap="small")
+        for col, (icon, title) in zip(resource_cols, resources):
+            with col:
+                st.html(f"""
+                <div class="job-resource">
+                  <div class="job-resource-icon">{icon}</div>
+                  <div class="job-resource-title">{title}</div>
                 </div>
-                """, unsafe_allow_html=True)
+                """)
 
-    with right:
-        section_title(5, "추천 학습 콘텐츠")
-        st.markdown("""
-        <div class="project-card" style="
-            background:linear-gradient(120deg,#f0fbf9,#f5f9ff);">
-            <p style="font-size:14px;line-height:2.0;color:#29465f;">
-                <b style="color:#18b58a;">✓</b>　프로젝트 경험 정리 및 성과 수치화 방법<br>
-                <b style="color:#18b58a;">✓</b>　데이터·AI 직무 면접 대비 예상 질문<br>
-                <b style="color:#18b58a;">✓</b>　포트폴리오 구성 및 발표 팁<br>
-                <b style="color:#18b58a;">✓</b>　기업별 채용 공고 및 자격 요건 정리
-            </p>
+    with contents_col:
+        st.html('<div class="job-section-head"><span class="job-section-no">05.</span> 추천 학습 콘텐츠</div>')
+        st.html("""
+        <div class="job-content-panel">
+          <div class="job-content-line">
+            <b style="color:#20ad91;">✓</b>　프로젝트 경험 정리 및 성과 수치화 방법<br>
+            <b style="color:#20ad91;">✓</b>　데이터·AI 직무 면접 대비 예상 질문<br>
+            <b style="color:#20ad91;">✓</b>　포트폴리오 구성 및 발표 팁<br>
+            <b style="color:#20ad91;">✓</b>　기업별 채용 공고 및 자격 요건 정리
+          </div>
         </div>
-        """, unsafe_allow_html=True)
+        """)
 
-    st.markdown("""
-    <div class="bottom-banner">
-        <div style="display:flex;align-items:center;gap:25px;">
-            <div style="font-size:42px;">◢</div>
-            <div>
-                <h2>Next Career with AIVLE School!</h2>
-                <p>AIVLE School과 함께, 실무 역량을 취업으로 연결하세요.</p>
-            </div>
-        </div>
+    st.html("""
+    <div class="job-bottom-banner">
+      <strong>△　Next Career with AIVLE School!</strong><br>
+      <span>AIVLE School과 함께, 실무 역량을 취업으로 연결하세요.</span>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
-
-
-
-# =========================================================
-# 12. 포트폴리오 페이지
-# =========================================================
-
+    # 개인별 취업 준비 체크리스트
+    with st.expander("✅ 나의 취업 준비 체크리스트", expanded=False):
+        phase = st.selectbox(
+            "현재 준비 단계",
+            ["예비", "재학", "수료"],
+            index=1,
+            key="job_check_phase"
+        )
+        checklist = {
+            "예비": [
+                "지원 자격(연령·학력·미취업) 확인",
+                "관심 직무 2개 이상 탐색",
+                "지금까지의 프로젝트·경험 목록 만들기"
+            ],
+            "재학": [
+                "지원 직무와 요구 역량 정리",
+                "포트폴리오 대표 프로젝트 선정",
+                "자기소개서 초안 작성",
+                "모의 면접 또는 취업 특강 참여",
+                "채용 공고 및 잡페어 참여 기업 확인"
+            ],
+            "수료": [
+                "지원 직무 JD 분석",
+                "포트폴리오 최신화",
+                "면접 답변 경험 8문항 정리",
+                "관심 기업 지원 및 후속 일정 관리"
+            ]
+        }
+        done = 0
+        items = checklist[phase]
+        for idx, item in enumerate(items):
+            check_id = f"job_check_{phase}_{idx}"
+            checked = st.checkbox(item, key=check_id,
+                value=st.session_state.checks.get(check_id, False))
+            st.session_state.checks[check_id] = checked
+            done += int(checked)
+        st.progress(done / len(items), text=f"{done}/{len(items)}개 완료")
 def page_portfolio():
 
     st.markdown("""
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-            <div class="page-title">📁 포트폴리오</div>
-            <div class="page-subtitle">Portfolio</div>
-        </div>
-        <div style="
-            background:linear-gradient(90deg,#20b8b8,#159eae);
-            color:white;padding:8px 18px;border-radius:22px;
-            font-size:13px;font-weight:900;">
-            MY PORTFOLIO
-        </div>
-    </div>
+    <style>
+    .portfolio-banner {
+        background: linear-gradient(110deg, #dff7f8, #e7f4ff);
+        border-radius: 20px;
+        padding: 27px;
+        margin: 15px 0 20px 0;
+        color: #19334d;
+    }
+    .portfolio-banner h2 {
+        font-size: 25px;
+        font-weight: 800;
+        margin-bottom: 10px;
+    }
+    .portfolio-banner p {
+        font-size: 15px;
+        line-height: 1.8;
+        color: #526d83;
+    }
+    .portfolio-card {
+        background: white;
+        border-radius: 17px;
+        padding: 20px 10px;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(50,80,100,0.06);
+        min-height: 115px;
+    }
+    .portfolio-card h3 {
+        color: #19334d;
+        font-size: 17px;
+        margin: 8px 0;
+    }
+    .portfolio-card p {
+        color: #8294a4;
+        font-size: 12px;
+    }
+    .portfolio-section {
+        font-size: 19px;
+        font-weight: 800;
+        color: #19334d;
+        margin: 18px 0 12px 0;
+    }
+    .portfolio-info {
+        background: #e4f8f7;
+        padding: 15px;
+        border-radius: 14px;
+        color: #19334d;
+        line-height: 1.9;
+        margin-top: 10px;
+    }
+    .senior-card {
+        background: white;
+        border: 1px solid #e6edf3;
+        border-radius: 14px;
+        padding: 14px;
+        margin-bottom: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    <div class="hero" style="min-height:145px;">
-        <div>
-            <h1>프로젝트 경험을 가치 있는 포트폴리오로! ✨</h1>
-            <h3 style="color:#536d87;">
-                작성부터 AI 피드백, 선배 사례까지<br>
-                AIVLE School이 포트폴리오 완성을 도와드립니다.
-            </h3>
-        </div>
-        <div class="hero-icon">👩🏻‍💻📚</div>
+    # 상단 제목
+    st.markdown(
+        '<div class="page-title">📁 포트폴리오</div>',
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        '<div class="page-sub">Portfolio | 나만의 프로젝트 경험을 가치 있는 포트폴리오로!</div>',
+        unsafe_allow_html=True
+    )
+
+    # 상단 배너
+    st.markdown("""
+    <div class="portfolio-banner">
+        <h2>프로젝트 경험을 가치 있는 포트폴리오로! ✨</h2>
+        <p>
+        작성부터 AI 피드백, 선배 사례까지<br>
+        AIVLE School이 포트폴리오 완성을 도와드립니다.
+        </p>
     </div>
     """, unsafe_allow_html=True)
 
-    # 상단 바로가기 카드
-    quick_actions = [
-        ("✏️", "포트폴리오 작성", "템플릿으로 쉽게 작성", "작성하기"),
-        ("✨", "AI 피드백 받기", "완성도 분석 및 개선 제안", "피드백"),
-        ("📂", "선배 포트폴리오", "우수 사례 확인 및 참고", "사례"),
-        ("📖", "작성 가이드", "구성·작성법·예시 제공", "가이드")
-    ]
-    action_cols = st.columns(4)
-    for idx, (icon, title, desc, action) in enumerate(quick_actions):
-        with action_cols[idx]:
-            st.markdown(f"""
-            <div class="info-card" style="
-                min-height:108px;text-align:center;padding:13px 8px;
-                border:1px solid #e6f0f4;">
-                <div style="font-size:34px;margin-bottom:3px;">{icon}</div>
-                <h3 style="font-size:16px;margin:3px 0 5px;">{title}</h3>
-                <p>{desc}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button("바로가기  ›", key=f"portfolio_quick_{idx}",
-                         use_container_width=True):
-                st.session_state.portfolio_section = action
-                st.rerun()
+    # 퀵 메뉴
+    st.markdown('<div class="portfolio-section">⭐ Portfolio Menu</div>',
+                unsafe_allow_html=True)
 
-    st.markdown("<div style='height:5px'></div>", unsafe_allow_html=True)
+    q1, q2, q3, q4 = st.columns(4)
 
-    # 초기 상태
-    if "portfolio_section" not in st.session_state:
-        st.session_state.portfolio_section = "작성하기"
-    if "portfolio_items" not in st.session_state:
-        st.session_state.portfolio_items = []
+    with q1:
+        st.markdown("""
+        <div class="portfolio-card">
+            <div style="font-size:32px;">✏️</div>
+            <h3>포트폴리오 작성</h3>
+            <p>템플릿으로 쉽게 작성</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # 작성 영역 / AI 피드백 영역
-    left_col, right_col = st.columns([1, 1.03], gap="medium")
+    with q2:
+        st.markdown("""
+        <div class="portfolio-card">
+            <div style="font-size:32px;">✨</div>
+            <h3>AI 피드백 받기</h3>
+            <p>완성도 분석 및 개선 제안</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    with left_col:
-        section_title(1, "포트폴리오 작성하기")
+    with q3:
+        st.markdown("""
+        <div class="portfolio-card">
+            <div style="font-size:32px;">📂</div>
+            <h3>선배 포트폴리오</h3>
+            <p>우수 사례 확인 및 참고</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with q4:
+        st.markdown("""
+        <div class="portfolio-card">
+            <div style="font-size:32px;">📖</div>
+            <h3>작성 가이드</h3>
+            <p>구성·작성법·예시 제공</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.write("")
+
+    # ==========================================
+    # 01. 포트폴리오 작성
+    # ==========================================
+    left, right = st.columns([1, 1], gap="medium")
+
+    with left:
+        st.markdown('<div class="portfolio-section">01. 📝 포트폴리오 작성하기</div>',
+                    unsafe_allow_html=True)
 
         write_tab, saved_tab = st.tabs(["✏️ 새로 작성하기", "📁 내 포트폴리오"])
 
         with write_tab:
-            st.markdown("""
-            <div style="
-                background:#eef5fc;border-radius:13px;padding:9px 12px;
-                color:#294763;font-weight:800;text-align:center;
-                margin-bottom:12px;">
-                프로젝트 경험을 정리하고 나만의 포트폴리오를 만들어 보세요.
-            </div>
-            """, unsafe_allow_html=True)
 
             template = st.radio(
                 "작성 템플릿 선택",
-                ["프로젝트 중심 템플릿", "취업용 종합 템플릿", "데이터·AI 특화 템플릿"],
+                [
+                    "프로젝트 중심 템플릿",
+                    "취업용 종합 템플릿",
+                    "데이터·AI 특화 템플릿"
+                ],
                 horizontal=False,
                 key="portfolio_template"
             )
 
-            template_desc = {
-                "프로젝트 중심 템플릿": "프로젝트별 문제 정의, 수행 과정, 결과와 성과를 중심으로 작성합니다.",
-                "취업용 종합 템플릿": "자기소개, 핵심 역량, 프로젝트, 자격증 및 경험을 종합적으로 구성합니다.",
-                "데이터·AI 특화 템플릿": "데이터 수집·전처리, 분석·모델링, 평가 지표와 비즈니스 적용을 강조합니다."
-            }
-            st.info(template_desc[template])
+            with st.form("portfolio_write_form"):
 
-            with st.form("portfolio_create_form", clear_on_submit=False):
-                project_title = st.text_input(
-                    "프로젝트명 *",
-                    placeholder="예: 공공데이터 기반 지역 주차 문제 분석"
-                )
-                c1, c2 = st.columns(2)
-                with c1:
-                    project_role = st.text_input(
-                        "담당 역할",
-                        placeholder="예: 데이터 분석 및 시각화"
-                    )
-                with c2:
-                    project_period = st.text_input(
-                        "진행 기간",
-                        placeholder="예: 2026.10 ~ 2026.11"
-                    )
+                st.markdown("#### 기본 정보")
 
-                tech_stack = st.text_input(
-                    "사용 기술",
-                    placeholder="예: Python, Pandas, Streamlit, SQL"
+                project_name = st.text_input(
+                    "프로젝트명",
+                    placeholder="예: 고객 VOC 분석 기반 AI 서비스"
                 )
+
+                target_job = st.selectbox(
+                    "지원 희망 직무",
+                    ["DX 컨설턴트", "AI 개발자", "데이터 분석가",
+                     "BI 개발자", "IT 기획/PM", "기타"]
+                )
+
+                period = st.text_input(
+                    "프로젝트 기간",
+                    placeholder="예: 2026.10 ~ 2026.11"
+                )
+
+                st.markdown("#### 프로젝트 상세 내용")
+
                 problem = st.text_area(
-                    "프로젝트 배경 및 문제 정의",
-                    placeholder="어떤 문제를 해결하기 위해 프로젝트를 진행했나요?",
-                    height=85
+                    "1. 프로젝트 배경 및 문제 정의",
+                    placeholder="어떤 문제를 해결하기 위해 프로젝트를 시작했나요?",
+                    height=90
                 )
-                process = st.text_area(
-                    "수행 내용 및 문제 해결 과정",
-                    placeholder="데이터 수집, 분석, 모델링, 서비스 구현 등 수행 과정을 작성하세요.",
-                    height=100
+
+                goal = st.text_area(
+                    "2. 프로젝트 목표",
+                    placeholder="프로젝트를 통해 달성하고자 한 목표를 작성하세요.",
+                    height=80
                 )
+
+                role = st.text_area(
+                    "3. 본인의 역할",
+                    placeholder="담당한 업무와 기여 내용을 작성하세요.",
+                    height=80
+                )
+
+                technology = st.text_input(
+                    "4. 활용 기술",
+                    placeholder="예: Python, SQL, Pandas, LangChain, RAG"
+                )
+
                 result = st.text_area(
-                    "주요 성과 및 결과",
-                    placeholder="정량적·정성적 성과와 프로젝트 결과를 작성하세요.",
-                    height=85
+                    "5. 프로젝트 성과 및 결과",
+                    placeholder="정량적·정성적 성과를 작성하세요.",
+                    height=90
                 )
-                lesson = st.text_area(
-                    "배운 점 및 개선할 점",
-                    placeholder="프로젝트를 통해 배운 점과 향후 개선 방향을 작성하세요.",
-                    height=75
+
+                learned = st.text_area(
+                    "6. 배운 점 및 개선 사항",
+                    placeholder="프로젝트를 통해 배운 점과 향후 개선 방향",
+                    height=80
                 )
 
                 submitted = st.form_submit_button(
                     "✏️ 포트폴리오 저장하기",
-                    use_container_width=True,
-                    type="primary"
+                    use_container_width=True
                 )
 
                 if submitted:
-                    if not project_title.strip():
+
+                    if not project_name.strip():
                         st.warning("프로젝트명을 입력해 주세요.")
+
                     else:
-                        st.session_state.portfolio_items.append({
-                            "title": project_title.strip(),
-                            "role": project_role.strip(),
-                            "period": project_period.strip(),
-                            "tech": tech_stack.strip(),
-                            "problem": problem.strip(),
-                            "process": process.strip(),
-                            "result": result.strip(),
-                            "lesson": lesson.strip(),
-                            "template": template
-                        })
-                        st.success("포트폴리오가 내 포트폴리오에 저장되었습니다.")
+                        portfolio = {
+                            "프로젝트명": project_name,
+                            "지원 직무": target_job,
+                            "기간": period,
+                            "템플릿": template,
+                            "문제 정의": problem,
+                            "프로젝트 목표": goal,
+                            "담당 역할": role,
+                            "활용 기술": technology,
+                            "성과": result,
+                            "배운 점": learned
+                        }
+
+                        if "my_portfolios" not in st.session_state:
+                            st.session_state.my_portfolios = []
+
+                        st.session_state.my_portfolios.append(portfolio)
+
+                        st.success("포트폴리오가 저장되었습니다!")
 
         with saved_tab:
-            saved_items = st.session_state.portfolio_items
-            if saved_items:
-                st.markdown(f"**저장된 포트폴리오 {len(saved_items)}개**")
-                for idx, item in enumerate(saved_items):
-                    with st.expander(f"📁 {item['title']}", expanded=False):
-                        st.caption(
-                            f"{item.get('role') or '역할 미입력'} · "
-                            f"{item.get('period') or '기간 미입력'}"
-                        )
-                        st.markdown(f"**사용 기술**  \n{item.get('tech') or '-'}")
-                        st.markdown(f"**문제 정의**  \n{item.get('problem') or '-'}")
-                        st.markdown(f"**수행 과정**  \n{item.get('process') or '-'}")
-                        st.markdown(f"**성과**  \n{item.get('result') or '-'}")
-                        st.markdown(f"**배운 점**  \n{item.get('lesson') or '-'}")
-                        if st.button("삭제", key=f"delete_portfolio_{idx}"):
-                            st.session_state.portfolio_items.pop(idx)
+
+            st.markdown("#### 📁 내가 작성한 포트폴리오")
+
+            saved = st.session_state.get("my_portfolios", [])
+
+            if saved:
+
+                for i, p in enumerate(saved):
+
+                    with st.expander(f"📄 {p['프로젝트명']}"):
+
+                        for key, value in p.items():
+                            if value:
+                                st.markdown(f"**{key}**")
+                                st.write(value)
+
+                        if st.button(
+                            "🗑️ 삭제",
+                            key=f"delete_portfolio_{i}"
+                        ):
+                            st.session_state.my_portfolios.pop(i)
                             st.rerun()
+
             else:
-                st.markdown("""
-                <div class="project-card" style="text-align:center;padding:35px 12px;">
-                    <div style="font-size:42px;">📂</div>
-                    <h3>아직 저장된 포트폴리오가 없습니다.</h3>
-                    <p>새로 작성하기 탭에서 프로젝트 경험을 등록해 보세요.</p>
-                </div>
-                """, unsafe_allow_html=True)
+                st.info("아직 작성한 포트폴리오가 없습니다.")
 
-    with right_col:
-        section_title(2, "AI 포트폴리오 피드백")
+    # ==========================================
+    # 02. AI 피드백
+    # ==========================================
+    with right:
 
-        uploaded_portfolio = st.file_uploader(
-            "포트폴리오 파일 업로드",
-            type=["pdf", "ppt", "pptx", "docx"],
-            accept_multiple_files=False,
-            key="portfolio_feedback_upload",
-            help="PDF, PPT, PPTX, DOCX 파일을 업로드할 수 있습니다."
-        )
-
-        if uploaded_portfolio:
-            st.success(f"업로드 파일: {uploaded_portfolio.name}")
-            st.caption(f"파일 크기: {uploaded_portfolio.size / 1024:.1f} KB")
+        st.markdown('<div class="portfolio-section">02. 🤖 AI 포트폴리오 피드백</div>',
+                    unsafe_allow_html=True)
 
         st.markdown("""
-        <div class="project-card" style="
-            background:linear-gradient(120deg,#e9fbf9,#e9f5ff);
-            padding:17px;">
-            <h3>✨ AI가 이런 항목을 중심으로 피드백해요!</h3>
-            <p style="font-size:14px;line-height:2.1;color:#29465f;">
-                <b style="color:#18b58a;">✓</b> 프로젝트 설명의 구체성과 논리 흐름 분석<br>
-                <b style="color:#18b58a;">✓</b> 성과(정량·정성) 표현의 적절성 평가<br>
-                <b style="color:#18b58a;">✓</b> 지원 직무 관점의 강점과 보완점 제안<br>
-                <b style="color:#18b58a;">✓</b> 구성, 가독성, 디자인 개선 가이드 제공
-            </p>
+        <div class="portfolio-info">
+        <b>📤 포트폴리오 파일을 업로드하세요.</b><br>
+        PDF, PPTX, DOCX 파일을 지원합니다.<br>
+        AI가 포트폴리오의 완성도를 분석할 수 있도록 준비합니다.
         </div>
         """, unsafe_allow_html=True)
 
-        if st.button("✨ AI 피드백 준비하기", key="portfolio_feedback_btn",
-                     use_container_width=True, type="primary"):
-            if uploaded_portfolio is None:
-                st.warning("피드백을 받을 포트폴리오 파일을 먼저 업로드해 주세요.")
-            else:
-                st.info(
-                    "파일이 업로드되었습니다. 실제 AI 내용 분석을 위해서는 "
-                    "PDF/PPT/DOCX 텍스트 추출 및 피드백 체인 연결이 추가로 필요합니다."
-                )
-
-    # 선배 포트폴리오 사례
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-    examples_col, guide_col = st.columns([1.8, 1], gap="medium")
-
-    with examples_col:
-        section_title(3, "선배들의 포트폴리오")
-
-        category = st.radio(
-            "직무별 사례",
-            ["전체", "DX 컨설턴트", "AI 개발자"],
-            horizontal=True,
-            key="portfolio_example_category"
+        feedback_file = st.file_uploader(
+            "포트폴리오 파일 선택",
+            type=["pdf", "pptx", "docx"],
+            key="portfolio_feedback_file"
         )
 
-        examples = [
-            {
-                "track": "DX 컨설턴트",
-                "title": "VOC 분석 기반 AI 고객상담 지원 서비스",
-                "desc": "고객 VOC를 분석해 상담 업무 효율화 방안을 제안한 프로젝트",
-                "tags": ["데이터분석", "RAG", "서비스기획"],
-                "cover": "🌊"
-            },
-            {
-                "track": "AI 개발자",
-                "title": "이미지 분류 기반 품질 검사 시스템",
-                "desc": "이미지 데이터를 활용한 품질 검사 자동화 프로젝트",
-                "tags": ["딥러닝", "모델링", "Flask"],
-                "cover": "🧠"
-            },
-            {
-                "track": "DX 컨설턴트",
-                "title": "공공데이터 분석을 통한 지역 복지 서비스 개선",
-                "desc": "공공데이터 분석을 통한 지역 현안 및 개선 방향 도출",
-                "tags": ["데이터분석", "시각화", "정책제안"],
-                "cover": "📊"
-            },
-            {
-                "track": "AI 개발자",
-                "title": "LLM 기반 문서 질의응답 시스템",
-                "desc": "문서 검색 증강 생성 기반 질의응답 서비스 구현",
-                "tags": ["LLM", "RAG", "LangChain"],
-                "cover": "🤖"
-            }
-        ]
+        if feedback_file:
 
-        filtered = [
-            x for x in examples
-            if category == "전체" or x["track"] == category
-        ]
-        card_cols = st.columns(4 if category == "전체" else 2)
-        for idx, item in enumerate(filtered):
-            with card_cols[idx % len(card_cols)]:
-                st.markdown(f"""
-                <div class="info-card" style="
-                    padding:10px 9px;min-height:190px;margin-bottom:8px;">
-                    <div style="
-                        height:64px;border-radius:9px;
-                        background:linear-gradient(120deg,#0e7589,#1ca8ad);
-                        display:flex;align-items:center;justify-content:center;
-                        font-size:34px;color:white;">
-                        {item['cover']}
-                    </div>
-                    <div style="
-                        display:inline-block;background:#e8f4ff;color:#2677bb;
-                        border-radius:6px;padding:2px 6px;font-size:10px;
-                        font-weight:800;margin-top:7px;">
-                        {item['track']}
-                    </div>
-                    <h3 style="font-size:13px;margin:5px 0;">{item['title']}</h3>
-                    <p style="font-size:11px;">{item['desc']}</p>
-                    <div style="margin-top:6px;">
-                        {''.join(f"<span style='display:inline-block;background:#edf3fa;color:#526d87;border-radius:9px;padding:3px 6px;margin:2px;font-size:9px;'>{tag}</span>" for tag in item['tags'])}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+            st.success(f"파일 업로드 완료: {feedback_file.name}")
 
-    with guide_col:
-        section_title(4, "포트폴리오 작성 가이드")
-        guide_items = [
-            ("☷", "좋은 포트폴리오의 구성요소",
-             "지원 직무와 연결되는 핵심 역량, 프로젝트, 성과를 명확하게 구성하세요."),
-            ("</>", "프로젝트 작성 예시",
-             "문제 정의 → 분석 및 수행 과정 → 결과 → 배운 점 순서로 작성하면 좋아요."),
-            ("📊", "성과 지표 표현 방법",
-             "가능하면 건수, 비율, 시간 단축 등 객관적인 수치로 성과를 표현하세요."),
-            ("🎨", "디자인·가독성 팁",
-             "한 페이지에 하나의 핵심 메시지를 담고 글꼴과 색상을 일관되게 사용하세요."),
-            ("❔", "자주 묻는 질문 (FAQ)",
-             "팀 프로젝트에서 본인의 역할과 기여도를 구체적으로 구분해 작성하세요.")
-        ]
-        for idx, (icon, title, desc) in enumerate(guide_items):
-            with st.expander(f"{icon}  {title}"):
-                st.write(desc)
+            st.markdown("#### ✨ AI 피드백 분석 기준")
 
-    st.markdown("""
-    <div class="bottom-banner">
-        <div style="display:flex;align-items:center;gap:22px;">
-            <div style="font-size:42px;">📁</div>
-            <div>
-                <h2>Build Your Future Portfolio!</h2>
-                <p>프로젝트 경험을 나만의 경쟁력 있는 포트폴리오로 완성해 보세요.</p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-
-# =========================================================
-# 11. 파일 불러오기 페이지
-# =========================================================
-
-def extract_document_text(uploaded_file):
-    """업로드한 PDF/TXT/DOCX/PPT/PPTX 파일에서 텍스트를 추출합니다."""
-    file_name = uploaded_file.name
-    extension = os.path.splitext(file_name)[1].lower()
-    file_bytes = uploaded_file.getvalue()
-
-    if extension == ".pdf":
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(file_bytes))
-        pages = []
-        for page_number, page in enumerate(reader.pages, start=1):
-            page_text = page.extract_text() or ""
-            if page_text.strip():
-                pages.append(f"[{page_number}페이지]\n{page_text}")
-        return "\n\n".join(pages)
-
-    if extension == ".txt":
-        try:
-            return file_bytes.decode("utf-8-sig")
-        except UnicodeDecodeError:
-            return file_bytes.decode("cp949", errors="replace")
-
-    if extension == ".docx":
-        from docx import Document as DocxDocument
-        document = DocxDocument(io.BytesIO(file_bytes))
-        return "\n".join(p.text for p in document.paragraphs if p.text.strip())
-
-    if extension in [".pptx", ".ppt"]:
-        from pptx import Presentation
-        presentation = Presentation(io.BytesIO(file_bytes))
-        slide_texts = []
-        for slide_number, slide in enumerate(presentation.slides, start=1):
-            texts = []
-            for shape in slide.shapes:
-                if hasattr(shape, "text") and shape.text.strip():
-                    texts.append(shape.text.strip())
-            if texts:
-                slide_texts.append(
-                    f"[슬라이드 {slide_number}]\n" + "\n".join(texts)
-                )
-        return "\n\n".join(slide_texts)
-
-    raise ValueError("지원하지 않는 파일 형식입니다.")
-
-
-def add_document_to_vectorstore(uploaded_file, category, description):
-    """문서를 청크로 분할하고 ChromaDB에 저장합니다."""
-    text = extract_document_text(uploaded_file)
-
-    if not text or not text.strip():
-        raise ValueError(
-            "문서에서 텍스트를 추출하지 못했습니다. "
-            "스캔된 PDF라면 OCR 처리가 필요할 수 있습니다."
-        )
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=150,
-        separators=["\n\n", "\n", ". ", " ", ""]
-    )
-
-    base_document = Document(
-        page_content=text,
-        metadata={
-            "source": uploaded_file.name,
-            "category": category,
-            "description": description or ""
-        }
-    )
-    chunks = splitter.split_documents([base_document])
-
-    ids = [str(uuid.uuid4()) for _ in chunks]
-
-    vectorstore = Chroma(
-        collection_name=COLLECTION,
-        embedding_function=OpenAIEmbeddings(
-            model="text-embedding-3-small"
-        ),
-        persist_directory=CHROMA_DIR
-    )
-    vectorstore.add_documents(chunks, ids=ids)
-
-    return {
-        "name": uploaded_file.name,
-        "category": category,
-        "description": description,
-        "size": len(uploaded_file.getvalue()),
-        "uploaded_at": datetime.now().strftime("%Y.%m.%d %H:%M"),
-        "status": "완료",
-        "chunk_count": len(chunks),
-        "ids": ids,
-        "preview": text[:5000]
-    }
-
-
-def page_file_upload():
-
-    st.markdown("""
-    <div class="page-title">📂 파일 불러오기</div>
-    <div class="page-subtitle">Document Upload · 나만의 학습 자료를 등록하고 AI와 대화해 보세요.</div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="hero" style="min-height:140px;">
-        <div>
-            <h1>학습 자료를 업로드하고, <span style="color:#159eae;">AI와 대화해 보세요!</span></h1>
-            <p>
-                AIVLE School 백서, 교안, 프로젝트 자료 등<br>
-                나만의 문서를 업로드하여 RAG 기반으로 질문하고 답변을 받을 수 있습니다.
-            </p>
-        </div>
-        <div class="hero-icon">📄⬆️</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    feature_cols = st.columns(4, gap="small")
-    feature_items = [
-        ("📤", "문서 업로드", "PDF, PPT, DOCX 지원"),
-        ("📚", "자동 처리", "문서 분할 및 임베딩"),
-        ("💬", "AI 기반 질의응답", "업로드한 문서로 답변"),
-        ("📑", "지식 관리", "등록 문서 확인 및 삭제")
-    ]
-
-    for col, (icon, title, desc) in zip(feature_cols, feature_items):
-        with col:
-            st.markdown(f"""
-            <div class="info-card" style="padding:15px 8px; min-height:105px;">
-                <div class="card-icon">{icon}</div>
-                <h3 style="text-align:center; font-size:15px;">{title}</h3>
-                <p style="text-align:center;">{desc}</p>
+            st.markdown("""
+            <div class="portfolio-info">
+            ✅ 프로젝트 설명의 구체성과 논리 흐름 분석<br>
+            ✅ 성과(정량·정성) 표현의 적절성 평가<br>
+            ✅ 지원 직무 관점의 강점과 보완점 제안<br>
+            ✅ 구성, 가독성, 디자인 개선 가이드 제공
             </div>
             """, unsafe_allow_html=True)
 
-    section_title(1, "문서 업로드")
+            st.info("현재 파일 업로드 기능이 연결되었습니다. 실제 AI 분석은 기존 RAG/LLM 체인과 연결해야 합니다.")
 
-    upload_col, setting_col = st.columns([1.2, 0.9], gap="medium")
+        else:
+            st.info("포트폴리오 파일을 업로드하면 피드백 분석을 준비할 수 있습니다.")
 
-    with upload_col:
-        st.markdown("""
-        <div class="info-card" style="min-height:245px;">
-            <div style="text-align:center; padding:8px 0 2px;">
-                <div style="font-size:48px;">☁️</div>
-                <h3>파일을 선택하여 업로드하세요</h3>
-                <p>PDF, PPTX, DOCX, TXT 파일을 지원합니다.</p>
+    st.write("")
+
+    # ==========================================
+    # 03. 선배 포트폴리오
+    # ==========================================
+    st.markdown('<div class="portfolio-section">03. 👥 포트폴리오 구성 예시</div>',
+                unsafe_allow_html=True)
+
+    filter1, filter2 = st.columns([2, 1])
+
+    with filter1:
+        job_filter = st.selectbox(
+            "직무별 포트폴리오",
+            ["전체", "DX 컨설턴트", "AI 개발자"],
+            key="senior_job_filter"
+        )
+
+    with filter2:
+        project_filter = st.selectbox(
+            "프로젝트 유형",
+            ["전체", "데이터 분석", "AI·ML", "서비스 개발"],
+            key="senior_project_filter"
+        )
+
+    seniors = [
+        {
+            "직무": "DX 컨설턴트",
+            "유형": "데이터 분석",
+            "제목": "VOC 분석 기반 AI 고객상담 지원 서비스",
+            "기술": "Python · RAG · 데이터분석"
+        },
+        {
+            "직무": "AI 개발자",
+            "유형": "AI·ML",
+            "제목": "이미지 분류 기반 품질 검사 시스템",
+            "기술": "딥러닝 · 모델링 · Flask"
+        },
+        {
+            "직무": "DX 컨설턴트",
+            "유형": "데이터 분석",
+            "제목": "공공데이터 분석을 통한 지역 서비스 개선",
+            "기술": "Python · 시각화 · 정책제안"
+        },
+        {
+            "직무": "AI 개발자",
+            "유형": "서비스 개발",
+            "제목": "LLM 기반 문서 질의응답 시스템",
+            "기술": "LLM · RAG · LangChain"
+        }
+    ]
+
+    filtered = [
+        s for s in seniors
+        if (job_filter == "전체" or s["직무"] == job_filter)
+        and (project_filter == "전체" or s["유형"] == project_filter)
+    ]
+
+    senior_cols = st.columns(4)
+
+    for i, senior in enumerate(filtered):
+
+        with senior_cols[i % 4]:
+
+            st.markdown(f"""
+            <div class="senior-card">
+                <div style="font-size:30px;">📁</div>
+                <small>{senior['직무']}</small>
+                <h4 style="color:#19334d;">{senior['제목']}</h4>
+                <p style="font-size:12px;color:#8294a4;">
+                    {senior['기술']}
+                </p>
             </div>
+            """, unsafe_allow_html=True)
+
+            with st.expander("상세 보기"):
+                st.write("직무:", senior["직무"])
+                st.write("프로젝트 유형:", senior["유형"])
+                st.write("활용 기술:", senior["기술"])
+                st.info("구성 설명을 위한 예시입니다. 실제 수료생의 사례가 아닙니다.")
+
+    if not filtered:
+        st.info("조건에 맞는 포트폴리오가 없습니다.")
+
+    # ==========================================
+    # 04. 포트폴리오 작성 가이드
+    # ==========================================
+    st.markdown('<div class="portfolio-section">04. 📚 포트폴리오 작성 가이드</div>',
+                unsafe_allow_html=True)
+
+    guide_items = {
+        "📋 좋은 포트폴리오의 구성 요소": """
+        1. 프로젝트 개요 및 배경
+        2. 문제 정의 및 해결 목표
+        3. 담당 역할 및 기여도
+        4. 활용 기술 및 분석 방법
+        5. 프로젝트 결과 및 성과
+        6. 배운 점 및 향후 개선 방향
+        """,
+
+        "💻 프로젝트 작성 예시": """
+        프로젝트명: 고객 VOC 분석 기반 AI 상담 지원 서비스
+
+        문제 정의: 반복적인 고객 문의로 인한 상담 업무 부담
+
+        해결 방법: VOC 데이터 분석 및 RAG 기반 질의응답 시스템 구축
+
+        활용 기술: Python, Pandas, LangChain, Chroma
+
+        성과: 상담 업무 효율화 가능성 및 정보 검색 편의성 제시
+        """,
+
+        "📊 성과 지표 표현 방법": """
+        정량적 성과:
+        - 데이터 처리 시간 감소율
+        - 모델 정확도 및 F1-score
+        - 사용자 만족도
+        - 업무 처리 시간 개선
+
+        정성적 성과:
+        - 문제 해결 과정
+        - 협업 및 의사소통 경험
+        - 업무 프로세스 개선
+        """,
+
+        "💡 자주 묻는 질문 (FAQ)": """
+        Q. 프로젝트 경험이 적어도 작성할 수 있나요?
+        A. 미니프로젝트, 개인 프로젝트, 학습 경험도 작성할 수 있습니다.
+
+        Q. 팀 프로젝트에서 어떤 내용을 강조해야 하나요?
+        A. 팀 전체 성과뿐 아니라 본인의 역할과 기여도를 구체적으로 작성하세요.
+
+        Q. 성과를 수치로 표현하기 어려우면 어떻게 하나요?
+        A. 문제 해결 과정, 개선 사항, 결과물 등 정성적 성과를 제시하세요.
+        """
+    }
+
+    for title, content in guide_items.items():
+        with st.expander(title):
+            st.markdown(content)
+
+    # 기존 일정 및 체크리스트 유지
+    st.markdown('<div class="portfolio-section">📅 포트폴리오 일정 및 점검</div>',
+                unsafe_allow_html=True)
+
+    lines = render_event_list(
+        [e for e in TEAM_EVENTS if e[3] == "포폴"]
+    )
+
+    chk = render_checklist("포폴")
+
+    return (
+        "포트폴리오 화면. "
+        "포트폴리오 작성, AI 피드백 업로드, "
+        "선배 포트폴리오 및 작성 가이드를 제공합니다. "
+        + "일정: " + "; ".join(lines)
+        + ". " + chk
+    )
+def page_upload():
+
+    import os
+    import tempfile
+    import uuid
+    from datetime import datetime
+
+    # --------------------------------------
+    # 세션 상태 초기화
+    # --------------------------------------
+    if "uploaded_documents" not in st.session_state:
+        st.session_state.uploaded_documents = []
+
+    if "upload_activity" not in st.session_state:
+        st.session_state.upload_activity = []
+
+    if "upload_name" not in st.session_state:
+        st.session_state.upload_name = None
+
+    if "upload_chain" not in st.session_state:
+        st.session_state.upload_chain = None
+
+    # --------------------------------------
+    # 디자인 CSS
+    # --------------------------------------
+    st.markdown("""
+    <style>
+
+    .upload-banner {
+        background: linear-gradient(110deg, #e0f7f8, #e5f3ff);
+        border-radius: 20px;
+        padding: 25px;
+        margin: 15px 0 18px 0;
+        min-height: 135px;
+    }
+
+    .upload-banner h2 {
+        color: #19334d;
+        font-size: 25px;
+        font-weight: 800;
+        margin-bottom: 12px;
+    }
+
+    .upload-banner p {
+        color: #526d83;
+        font-size: 15px;
+        line-height: 1.8;
+    }
+
+    .upload-feature {
+        background: white;
+        border-radius: 16px;
+        padding: 16px 8px;
+        text-align: center;
+        min-height: 95px;
+        box-shadow: 0 4px 14px rgba(50,80,100,0.07);
+        border: 1px solid #e9f0f5;
+    }
+
+    .upload-feature .emoji {
+        font-size: 27px;
+    }
+
+    .upload-feature h4 {
+        font-size: 15px;
+        color: #19334d;
+        margin: 5px 0;
+    }
+
+    .upload-feature p {
+        font-size: 11px;
+        color: #8294a4;
+        margin: 0;
+    }
+
+    .upload-section-title {
+        font-size: 20px;
+        font-weight: 800;
+        color: #19334d;
+        margin: 20px 0 12px 0;
+    }
+
+    .upload-box {
+        background: #ffffff;
+        border: 1px dashed #9bbbd2;
+        border-radius: 17px;
+        padding: 20px;
+        text-align: center;
+        color: #19334d;
+    }
+
+    .upload-setting {
+        background: white;
+        border-radius: 17px;
+        padding: 18px;
+        box-shadow: 0 4px 15px rgba(50,80,100,0.06);
+    }
+
+    .upload-info {
+        background: #e5f8f7;
+        border-radius: 13px;
+        padding: 14px;
+        color: #19334d;
+        font-size: 13px;
+        line-height: 1.8;
+    }
+
+    .document-status {
+        background: #e5f8ed;
+        color: #149b64;
+        padding: 5px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ======================================
+    # 페이지 제목
+    # ======================================
+    st.markdown(
+        '<div class="page-title">📁 파일 불러오기</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="page-sub">Document Upload | 나만의 학습 자료를 등록하고 RAG로 질문하세요.</div>',
+        unsafe_allow_html=True
+    )
+
+    # ======================================
+    # 상단 배너
+    # ======================================
+    st.markdown("""
+    <div class="upload-banner">
+        <h2>학습 자료를 업로드하고, AI와 대화해 보세요! ✨</h2>
+        <p>
+        AIVLE School 백서, 교안, 프로젝트 자료 등<br>
+        나만의 문서를 등록하여 RAG 기반으로 질문하고 답변을 받을 수 있습니다.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ======================================
+    # 주요 기능 안내
+    # ======================================
+    f1, f2, f3, f4 = st.columns(4)
+
+    features = [
+        ("📤", "문서 업로드", "PDF 문서 등록"),
+        ("📚", "자동 처리", "문서 분할 및 임베딩"),
+        ("💬", "AI 기반 질의응답", "업로드 문서 기반 답변"),
+        ("📑", "지식 관리", "등록 문서 확인 및 삭제")
+    ]
+
+    for col, feature in zip([f1, f2, f3, f4], features):
+        with col:
+            st.markdown(f"""
+            <div class="upload-feature">
+                <div class="emoji">{feature[0]}</div>
+                <h4>{feature[1]}</h4>
+                <p>{feature[2]}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ======================================
+    # 01. 문서 업로드
+    # ======================================
+    st.markdown(
+        '<div class="upload-section-title">01. 📤 문서 업로드</div>',
+        unsafe_allow_html=True
+    )
+
+    left, right = st.columns([1.2, 0.9], gap="medium")
+
+    with left:
+
+        st.markdown("""
+        <div class="upload-box">
+            <div style="font-size:48px;">☁️</div>
+            <h4>학습 자료를 업로드하세요.</h4>
+            <p>파일을 선택하여 업로드할 수 있습니다.</p>
         </div>
         """, unsafe_allow_html=True)
 
         uploaded_file = st.file_uploader(
             "파일 선택",
-            type=["pdf", "pptx", "docx", "txt"],
-            key="main_document_uploader",
-            help="파일당 최대 200MB를 권장합니다."
+            type=["pdf"],
+            key="document_uploader",
+            help="현재 RAG 자동 처리 기능은 PDF를 지원합니다."
         )
 
-        st.caption("지원 형식: PDF · PPTX · DOCX · TXT  |  파일당 최대 200MB")
+        st.caption("지원 형식: PDF | 파일당 최대 200MB")
 
-    with setting_col:
-        st.markdown("""
-        <div class="info-card" style="min-height:245px;">
-            <h3>⚙️ 업로드 설정</h3>
-        """, unsafe_allow_html=True)
+        if uploaded_file:
+
+            file_size = uploaded_file.size
+
+            st.success(f"📄 {uploaded_file.name}")
+
+            st.caption(
+                f"파일 크기: {file_size / (1024 * 1024):.2f} MB"
+            )
+
+            if file_size > 200 * 1024 * 1024:
+                st.error("파일 크기는 200MB를 초과할 수 없습니다.")
+
+    # ======================================
+    # 02. 업로드 설정
+    # ======================================
+    with right:
+
+        st.markdown(
+            '<div class="upload-section-title">02. ⚙️ 업로드 설정</div>',
+            unsafe_allow_html=True
+        )
 
         category = st.selectbox(
-            "📤 문서 카테고리",
-            ["교육 자료", "프로젝트 자료", "취업 자료", "포트폴리오", "기타"],
+            "📂 문서 카테고리",
+            [
+                "교육 자료",
+                "프로젝트 자료",
+                "취업 자료",
+                "포트폴리오",
+                "기타"
+            ],
             key="document_category"
         )
 
         description = st.text_area(
-            "🗂️ 문서 설명 (선택)",
-            placeholder="문서 내용을 간단히 입력하세요.\n(예: DX 교안, 미니프로젝트 자료 등)",
-            height=95,
+            "📝 문서 설명 (선택)",
+            placeholder="문서 내용을 간단히 입력하세요.\n예: DX 교안, 미니프로젝트 자료 등",
+            height=105,
             key="document_description"
         )
 
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class="upload-info">
+        <b>📌 문서 처리 과정</b><br>
+        ① PDF 문서 읽기<br>
+        ② 텍스트 분할 (Chunking)<br>
+        ③ 임베딩 생성<br>
+        ④ Chroma 벡터 저장소 등록<br>
+        ⑤ RAG 질의응답 준비
+        </div>
+        """, unsafe_allow_html=True)
 
-        if st.button(
-            "⬆️ 업로드 및 처리",
-            type="primary",
+        st.write("")
+
+        process_button = st.button(
+            "📤 업로드 및 처리",
             use_container_width=True,
-            key="process_uploaded_document"
-        ):
-            if uploaded_file is None:
-                st.warning("먼저 업로드할 파일을 선택해 주세요.")
+            type="primary",
+            disabled=uploaded_file is None
+        )
+
+        # 문서 처리
+        if process_button and uploaded_file:
+
+            if uploaded_file.size > 200 * 1024 * 1024:
+                st.error("200MB 이하의 파일만 업로드할 수 있습니다.")
+
             elif any(
-                item["name"] == uploaded_file.name
-                for item in st.session_state.uploaded_documents
+                d["name"] == uploaded_file.name
+                for d in st.session_state.uploaded_documents
             ):
-                st.warning("이미 등록된 파일명입니다. 기존 문서를 삭제한 후 다시 등록해 주세요.")
+                st.warning("이미 등록된 문서입니다.")
+
             else:
+
+                tmp = os.path.join(
+                    tempfile.gettempdir(),
+                    f"upload_{uuid.uuid4().hex}.pdf"
+                )
+
                 try:
-                    with st.spinner("문서를 읽고 청크 분할 및 임베딩을 진행하고 있습니다..."):
-                        saved_doc = add_document_to_vectorstore(
-                            uploaded_file,
-                            category,
-                            description
+
+                    with st.spinner(
+                        "문서를 읽고 벡터 저장소를 만드는 중입니다..."
+                    ):
+
+                        with open(tmp, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+
+                        # 기존 RAG 파이프라인 사용
+                        chain = rag_pipeline(
+                            tmp,
+                            collection_name="user_docs"
                         )
-                        st.session_state.uploaded_documents.append(saved_doc)
+
+                        st.session_state.upload_chain = chain
+                        st.session_state.upload_name = uploaded_file.name
+                        st.session_state.answer_source = "업로드 문서"
+
+                        now = datetime.now().strftime(
+                            "%Y.%m.%d %H:%M"
+                        )
+
+                        document = {
+                            "name": uploaded_file.name,
+                            "category": category,
+                            "description": description,
+                            "size": uploaded_file.size,
+                            "date": now,
+                            "status": "완료",
+                            "content": uploaded_file.getvalue(),
+                            "chain": chain
+                        }
+
+                        st.session_state.uploaded_documents.append(
+                            document
+                        )
+
+                        st.session_state.upload_activity.insert(
+                            0,
+                            {
+                                "name": uploaded_file.name,
+                                "date": now
+                            }
+                        )
 
                     st.success(
-                        f"'{uploaded_file.name}' 업로드 및 처리가 완료되었습니다. "
-                        f"({saved_doc['chunk_count']}개 청크)"
+                        f"{uploaded_file.name} 등록 및 RAG 처리가 완료되었습니다!"
                     )
-                    st.rerun()
 
-                except Exception as error:
-                    st.error("문서 처리 중 오류가 발생했습니다.")
-                    st.caption(str(error))
+                except Exception as e:
+                    st.error(f"문서 처리 중 오류가 발생했습니다: {e}")
 
-    section_title(2, "등록된 문서 관리")
+                finally:
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
+
+    # ======================================
+    # 03. 등록된 문서 관리
+    # ======================================
+    st.markdown(
+        '<div class="upload-section-title">03. 📚 등록된 문서 관리</div>',
+        unsafe_allow_html=True
+    )
 
     documents = st.session_state.uploaded_documents
 
-    filter_col, count_col, refresh_col = st.columns([2.2, 1, 0.45])
+    # 검색 및 필터
+    search_col, filter_col, count_col = st.columns([2, 1.3, 0.7])
 
-    with filter_col:
-        search_name = st.text_input(
-            "문서 검색",
-            placeholder="🔍 문서명을 검색하세요.",
-            label_visibility="collapsed",
+    with search_col:
+        search_text = st.text_input(
+            "🔍 문서명 검색",
+            placeholder="문서명을 검색하세요.",
             key="document_search"
         )
 
-    with count_col:
-        category_filter = st.selectbox(
+    with filter_col:
+        selected_category = st.selectbox(
             "카테고리",
-            ["전체", "교육 자료", "프로젝트 자료", "취업 자료", "포트폴리오", "기타"],
-            label_visibility="collapsed",
+            ["전체", "교육 자료", "프로젝트 자료",
+             "취업 자료", "포트폴리오", "기타"],
             key="document_filter"
         )
 
-    with refresh_col:
-        if st.button("🔄", help="목록 새로고침", use_container_width=True):
-            st.rerun()
+    with count_col:
+        st.markdown("**등록 문서**")
+        st.markdown(
+            f"### {len(documents)}개"
+        )
 
-    filtered_docs = [
-        doc for doc in documents
-        if (search_name.lower() in doc["name"].lower())
-        and (category_filter == "전체" or doc["category"] == category_filter)
+    # 필터 적용
+    filtered_documents = [
+        d for d in documents
+        if search_text.lower() in d["name"].lower()
+        and (
+            selected_category == "전체"
+            or d["category"] == selected_category
+        )
     ]
 
-    st.markdown("""
-    <div style="
-        display:grid;
-        grid-template-columns: 2.4fr 1fr 1.2fr 0.8fr 0.8fr 1fr;
-        gap:8px;
-        background:#d9f2f3;
-        border-radius:10px;
-        padding:12px;
-        color:#193653;
-        font-weight:800;
-        font-size:13px;">
-        <div>파일명</div><div>카테고리</div><div>업로드일</div>
-        <div>크기</div><div>처리 상태</div><div>작업</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # 문서 목록
+    if filtered_documents:
 
-    if not filtered_docs:
-        st.markdown("""
-        <div class="info-card" style="text-align:center; margin-top:8px;">
-            <div style="font-size:32px;">📂</div>
-            <h3>등록된 문서가 없습니다.</h3>
-            <p>위 영역에서 학습 자료를 업로드해 주세요.</p>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        for index, doc in enumerate(filtered_docs):
-            row_cols = st.columns([2.4, 1, 1.2, 0.8, 0.8, 1], gap="small")
+        header = st.columns([0.4, 2.4, 1.2, 1.2, 0.8, 1.1, 1.4])
 
-            with row_cols[0]:
+        headers = [
+            "선택",
+            "파일명",
+            "카테고리",
+            "업로드일",
+            "크기",
+            "상태",
+            "작업"
+        ]
+
+        for col, title in zip(header, headers):
+            col.markdown(f"**{title}**")
+
+        st.divider()
+
+        for idx, doc in enumerate(filtered_documents):
+
+            cols = st.columns([0.4, 2.4, 1.2, 1.2, 0.8, 1.1, 1.4])
+
+            with cols[0]:
+                selected = st.checkbox(
+                    "선택",
+                    key=f"doc_select_{doc['name']}",
+                    label_visibility="collapsed"
+                )
+
+            with cols[1]:
                 st.markdown(f"📄 **{doc['name']}**")
 
-            with row_cols[1]:
-                st.markdown(f"`{doc['category']}`")
+            with cols[2]:
+                st.caption(doc["category"])
 
-            with row_cols[2]:
-                st.caption(doc["uploaded_at"])
+            with cols[3]:
+                st.caption(doc["date"])
 
-            with row_cols[3]:
-                size_mb = doc["size"] / (1024 * 1024)
-                st.caption(f"{size_mb:.1f} MB")
+            with cols[4]:
+                st.caption(
+                    f"{doc['size'] / (1024 * 1024):.1f} MB"
+                )
 
-            with row_cols[4]:
-                st.markdown("<span style='color:#16a36a;font-weight:800;'>🟢 완료</span>", unsafe_allow_html=True)
-                st.caption(f"{doc['chunk_count']} chunks")
+            with cols[5]:
+                st.markdown(
+                    '<span class="document-status">● 완료</span>',
+                    unsafe_allow_html=True
+                )
 
-            with row_cols[5]:
-                action_cols = st.columns(3, gap="small")
+            with cols[6]:
 
-                with action_cols[0]:
-                    if st.button("👁️", key=f"preview_doc_{index}", help="문서 미리보기"):
-                        st.session_state.document_preview = doc["name"]
+                view_col, delete_col = st.columns(2)
 
-                with action_cols[1]:
-                    if st.button("💬", key=f"ask_doc_{index}", help="이 문서에 대해 질문하기"):
-                        st.session_state.menu = "🧠 학습 Q&A"
-                        st.session_state.document_question_hint = (
-                            f"'{doc['name']}' 문서의 주요 내용을 요약해 주세요."
-                        )
+                with view_col:
+                    if st.button(
+                        "👁️",
+                        key=f"view_doc_{idx}",
+                        help="문서 정보 확인"
+                    ):
+                        st.session_state["view_document"] = doc["name"]
+
+                with delete_col:
+                    if st.button(
+                        "🗑️",
+                        key=f"delete_doc_{idx}",
+                        help="문서 삭제"
+                    ):
+                        st.session_state.uploaded_documents = [
+                            d for d in st.session_state.uploaded_documents
+                            if d["name"] != doc["name"]
+                        ]
+
+                        if st.session_state.upload_name == doc["name"]:
+                            st.session_state.upload_name = None
+                            st.session_state.upload_chain = None
+                            st.session_state.answer_source = "AIVLE School 백서"
+
+                        st.success("문서가 삭제되었습니다.")
                         st.rerun()
 
-                with action_cols[2]:
-                    if st.button("🗑️", key=f"delete_doc_{index}", help="문서 삭제"):
-                        try:
-                            vectorstore = Chroma(
-                                collection_name=COLLECTION,
-                                embedding_function=OpenAIEmbeddings(
-                                    model="text-embedding-3-small"
-                                ),
-                                persist_directory=CHROMA_DIR
-                            )
-                            if doc.get("ids"):
-                                vectorstore.delete(ids=doc["ids"])
+            # 문서 정보 확인
+            if st.session_state.get("view_document") == doc["name"]:
 
-                            st.session_state.uploaded_documents = [
-                                item for item in st.session_state.uploaded_documents
-                                if item["name"] != doc["name"]
-                            ]
+                with st.expander(
+                    f"📄 {doc['name']} 문서 정보",
+                    expanded=True
+                ):
 
-                            if st.session_state.document_preview == doc["name"]:
-                                st.session_state.document_preview = None
+                    st.write("카테고리:", doc["category"])
+                    st.write("설명:", doc["description"] or "설명 없음")
+                    st.write("업로드일:", doc["date"])
 
-                            st.success(f"'{doc['name']}' 문서를 삭제했습니다.")
-                            st.rerun()
+                    st.download_button(
+                        "📥 원본 문서 다운로드",
+                        data=doc["content"],
+                        file_name=doc["name"],
+                        mime="application/pdf",
+                        key=f"download_{idx}"
+                    )
 
-                        except Exception as error:
-                            st.error("문서 삭제 중 오류가 발생했습니다.")
-                            st.caption(str(error))
+                    if st.button(
+                        "닫기",
+                        key=f"close_view_{idx}"
+                    ):
+                        st.session_state.view_document = None
+                        st.rerun()
 
-    if st.session_state.document_preview:
-        selected_doc = next(
-            (
-                item for item in st.session_state.uploaded_documents
-                if item["name"] == st.session_state.document_preview
-            ),
-            None
-        )
+            st.divider()
 
-        if selected_doc:
-            with st.expander(
-                f"📖 문서 미리보기: {selected_doc['name']}",
-                expanded=True
-            ):
-                st.caption(
-                    f"카테고리: {selected_doc['category']} · "
-                    f"업로드일: {selected_doc['uploaded_at']}"
+        # 선택 문서 일괄 삭제
+        if st.button("🗑️ 선택한 문서 삭제", use_container_width=True):
+
+            selected_names = [
+                d["name"] for d in filtered_documents
+                if st.session_state.get(
+                    f"doc_select_{d['name']}", False
                 )
-                if selected_doc.get("description"):
-                    st.write(selected_doc["description"])
-                st.text(selected_doc["preview"])
-                if st.button("미리보기 닫기", key="close_document_preview"):
-                    st.session_state.document_preview = None
-                    st.rerun()
+            ]
 
-    st.caption(
-        f"현재 세션에 등록된 문서: {len(documents)}개 · "
-        f"저장된 청크: {sum(doc['chunk_count'] for doc in documents)}개"
-    )
+            if selected_names:
 
+                st.session_state.uploaded_documents = [
+                    d for d in st.session_state.uploaded_documents
+                    if d["name"] not in selected_names
+                ]
 
-# =========================================================
-# 12. 학습 Q&A 페이지
-# =========================================================
+                if st.session_state.upload_name in selected_names:
+                    st.session_state.upload_name = None
+                    st.session_state.upload_chain = None
+                    st.session_state.answer_source = "AIVLE School 백서"
 
-def page_chat():
-
-    st.markdown("""
-    <div class="page-title">🧠 학습 Q&A</div>
-    <div class="page-subtitle">
-        AIVLE School 학습 자료를 기반으로 궁금한 내용을 질문해 보세요.
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="info-card">
-        <h3>🤖 AIVLE AI Assistant</h3>
-        <p>
-            업로드된 교육 자료를 검색하여 근거 기반 답변을 제공합니다.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 기존 대화 출력
-    for message in st.session_state.messages:
-
-        role = "user" if isinstance(message, HumanMessage) else "assistant"
-
-        with st.chat_message(role):
-            st.markdown(message.content)
-
-    # 질문 입력
-    user_input = st.chat_input("궁금한 내용을 입력하세요.")
-
-    if user_input:
-
-        st.session_state.messages.append(
-            HumanMessage(content=user_input)
-        )
-
-        with st.chat_message("user"):
-            st.markdown(user_input)
-
-        with st.chat_message("assistant"):
-
-            try:
-                chain = get_chain()
-
-                response_stream = chain.stream({
-                    "input": user_input
-                })
-
-                full_response = st.write_stream(response_stream)
-
-                st.session_state.messages.append(
-                    AIMessage(content=full_response)
+                st.success(
+                    f"{len(selected_names)}개 문서를 삭제했습니다."
                 )
 
-            except Exception as e:
-
-                st.error(
-                    "답변 생성 중 오류가 발생했습니다. "
-                    "OpenAI API 키와 ChromaDB 설정을 확인해 주세요."
-                )
-
-                st.caption(str(e))
-
-
-# =========================================================
-# 13. 나머지 페이지 임시 화면
-# =========================================================
-
-def page_placeholder(title, description, icon):
-
-    st.markdown(f"""
-    <div class="page-title">{icon} {title}</div>
-    <div class="page-subtitle">{description}</div>
-
-    <div class="hero">
-        <div>
-            <h1>{title}</h1>
-            <h3>AIVLE School Learning Assistant</h3>
-            <p>
-                해당 페이지는 현재 준비 중입니다.<br>
-                추후 관련 기능을 추가할 예정입니다.
-            </p>
-        </div>
-        <div class="hero-icon">{icon}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# =========================================================
-
-# =========================================================
-# 14. 온톨로지 페이지
-# =========================================================
-
-ONTOLOGY_CLASSES = [
-    ("AIVLESchool", "AIVLE School", "교육 기관"),
-    ("Curriculum", "교육과정", "교육 트랙 및 학습 단계"),
-    ("Job", "직무", "AI 개발자 · DX 컨설턴트"),
-    ("Project", "프로젝트", "미니 프로젝트 · 빅 프로젝트"),
-    ("Skill", "학습기술", "Python · SQL · 데이터 분석 등"),
-    ("Outcome", "성과", "포트폴리오 · 취업 연계"),
-    ("Document", "자료", "백서 · 교안 · 프로젝트 문서"),
-]
-
-ONTOLOGY_PROPERTIES = [
-    ("hasCurriculum", "교육 기관은 교육과정을 운영한다"),
-    ("hasJob", "교육과정은 직무와 연결된다"),
-    ("hasProject", "교육과정은 프로젝트를 포함한다"),
-    ("hasSkill", "프로젝트는 학습 기술을 활용한다"),
-    ("hasOutcome", "프로젝트는 성과로 이어진다"),
-    ("hasDocument", "교육 지식은 문서 자료로 뒷받침된다"),
-]
-
-ONTOLOGY_TRIPLES = [
-    ("AIVLE School", "hasCurriculum", "교육과정"),
-    ("AIVLE School", "hasJob", "직무"),
-    ("AIVLE School", "hasProject", "프로젝트"),
-    ("교육과정", "hasSkill", "기초 역량"),
-    ("교육과정", "hasSkill", "AI-DX 심화"),
-    ("교육과정", "hasProject", "미니 프로젝트"),
-    ("교육과정", "hasProject", "빅 프로젝트"),
-    ("직무", "hasSkill", "Python"),
-    ("직무", "hasSkill", "데이터 분석"),
-    ("직무", "hasSkill", "생성형 AI"),
-    ("프로젝트", "hasSkill", "SQL"),
-    ("프로젝트", "hasSkill", "시각화"),
-    ("프로젝트", "hasOutcome", "포트폴리오"),
-    ("프로젝트", "hasOutcome", "취업 연계"),
-    ("교육과정", "hasDocument", "AIVLE School 백서"),
-    ("프로젝트", "hasDocument", "미니프로젝트 교안"),
-]
-
-def build_ontology_graph(show_classes=True, show_properties=True):
-    """온톨로지 관계를 Graphviz DOT 그래프로 구성합니다."""
-    nodes = [
-        ('aivle', 'AIVLE\\nSchool', '#20b7b5', 'white'),
-        ('curriculum', '교육과정', '#8b79e8', 'white'),
-        ('job', '직무', '#38c9b8', 'white'),
-        ('project', '프로젝트', '#ffc94f', '#173653'),
-        ('skill', '학습기술', '#65aaf4', 'white'),
-        ('outcome', '성과', '#ec8ab8', 'white'),
-        ('document', '자료', '#8ac8dc', '#173653'),
-    ]
-
-    dot = [
-        'digraph AIVLE {',
-        'graph [rankdir=LR, bgcolor="transparent", pad="0.25", nodesep="0.55", ranksep="0.8"];',
-        'node [shape=ellipse, style="filled", fontname="Malgun Gothic", fontsize=13, penwidth=1.5, color="#ffffff", margin="0.22,0.14"];',
-        'edge [fontname="Malgun Gothic", fontsize=10, color="#8296b8", fontcolor="#425b78", arrowsize=0.8, penwidth=1.4];'
-    ]
-
-    if show_classes:
-        for node_id, label, fill, font in nodes:
-            dot.append(f'{node_id} [label="{label}", fillcolor="{fill}", fontcolor="{font}"];')
-    else:
-        dot.append('aivle [label="AIVLE\\nSchool", fillcolor="#20b7b5", fontcolor="white"];')
-
-    if show_classes and show_properties:
-        edges = [
-            ('aivle', 'curriculum', 'hasCurriculum'),
-            ('aivle', 'job', 'hasJob'),
-            ('aivle', 'project', 'hasProject'),
-            ('curriculum', 'skill', 'hasSkill'),
-            ('curriculum', 'project', 'hasProject'),
-            ('job', 'skill', 'hasSkill'),
-            ('project', 'skill', 'usesSkill'),
-            ('project', 'outcome', 'hasOutcome'),
-            ('curriculum', 'document', 'hasDocument'),
-        ]
-    elif show_classes:
-        edges = [
-            ('aivle', 'curriculum', ''),
-            ('aivle', 'job', ''),
-            ('aivle', 'project', ''),
-            ('curriculum', 'skill', ''),
-            ('curriculum', 'project', ''),
-            ('job', 'skill', ''),
-            ('project', 'skill', ''),
-            ('project', 'outcome', ''),
-            ('curriculum', 'document', ''),
-        ]
-    else:
-        edges = []
-
-    for source, target, label in edges:
-        dot.append(f'{source} -> {target} [label="{label}"];')
-
-    dot.append('}')
-    return "\n".join(dot)
-
-
-def run_ontology_sample_query(query):
-    """화면 예시 질의를 AIVLE 샘플 트리플 데이터에 적용합니다."""
-    q = (query or "").lower()
-
-    if "project" in q and "skill" in q:
-        rows = [
-            {"project": "VOC 분석 서비스", "skill": "Python, 데이터 분석, RAG"},
-            {"project": "주정차 데이터 분석", "skill": "Python, SQL, 시각화"},
-        ]
-    elif "curriculum" in q or "교육과정" in q:
-        rows = [
-            {"subject": "AIVLE School", "relation": "hasCurriculum", "object": "교육과정"},
-            {"subject": "교육과정", "relation": "hasProject", "object": "미니 프로젝트"},
-            {"subject": "교육과정", "relation": "hasProject", "object": "빅 프로젝트"},
-        ]
-    elif "job" in q or "직무" in q:
-        rows = [
-            {"직무": "DX 컨설턴트", "관련 기술": "데이터 분석, SQL, 생성형 AI"},
-            {"직무": "AI 개발자", "관련 기술": "Python, 머신러닝, 딥러닝"},
-        ]
-    else:
-        rows = [
-            {"subject": s, "predicate": p, "object": o}
-            for s, p, o in ONTOLOGY_TRIPLES
-        ]
-
-    return rows
-
-
-def page_ontology():
-    st.markdown("""
-    <div class="page-title">🕸️ 온톨로지</div>
-    <div class="page-subtitle">Ontology & Knowledge Graph · AIVLE School 지식 관계 탐색</div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="hero" style="min-height:140px;">
-        <div>
-            <h1>AIVLE School 지식 구조를 한눈에!</h1>
-            <h3 style="color:#159eae;">교육과정, 직무, 프로젝트의 관계를 연결합니다.</h3>
-            <p>
-                교육과정, 직무, 프로젝트 등 주요 개념의 관계를<br>
-                온톨로지(지식 그래프)로 시각화하고 탐색할 수 있습니다.
-            </p>
-        </div>
-        <div class="hero-icon">🕸️💻</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 상단 탭 버튼
-    tab_names = ["지식 그래프", "클래스(개념)", "속성(Property)", "SPARQL 질의", "관리"]
-    tab_icons = ["📊", "📁", "🔗", "📄", "⚙️"]
-    tab_cols = st.columns(5, gap="small")
-
-    for col, name, icon in zip(tab_cols, tab_names, tab_icons):
-        with col:
-            if st.button(
-                f"{icon} {name}",
-                key=f"ontology_tab_{name}",
-                use_container_width=True,
-                type="primary" if st.session_state.ontology_tab == name else "secondary"
-            ):
-                st.session_state.ontology_tab = name
                 st.rerun()
 
-    active_tab = st.session_state.ontology_tab
+            else:
+                st.warning("삭제할 문서를 선택해 주세요.")
 
-    if active_tab == "지식 그래프":
-        section_title(1, "지식 그래프 시각화")
-        graph_col, info_col = st.columns([2.15, 0.85], gap="medium")
+    else:
 
-        with graph_col:
-            with st.container(border=True):
-                filter_cols = st.columns([1, 1, 1.5])
-                with filter_cols[0]:
-                    show_classes = st.checkbox("개념(클래스)", value=True, key="onto_show_classes")
-                with filter_cols[1]:
-                    show_properties = st.checkbox("관계(속성)", value=True, key="onto_show_properties")
-                with filter_cols[2]:
-                    st.caption("노드를 선택하는 대신 오른쪽 목록에서 개념을 탐색할 수 있습니다.")
+        st.info(
+            "등록된 문서가 없습니다. PDF 파일을 업로드해 주세요."
+            if not documents
+            else "검색 조건에 맞는 문서가 없습니다."
+        )
 
-                try:
-                    st.graphviz_chart(
-                        build_ontology_graph(show_classes, show_properties),
-                        use_container_width=True
+    # ======================================
+    # 최근 업로드 활동
+    # ======================================
+    st.markdown(
+        '<div class="upload-section-title">🕒 최근 업로드 활동</div>',
+        unsafe_allow_html=True
+    )
+
+    activities = st.session_state.upload_activity
+
+    if activities:
+
+        for activity in activities[:5]:
+
+            st.markdown(
+                f"""
+                <div style="
+                    background:white;
+                    padding:13px;
+                    border-radius:13px;
+                    margin-bottom:8px;
+                    box-shadow:0 3px 12px rgba(50,80,100,0.04);
+                ">
+                    <b>🟢 {activity['name']}</b><br>
+                    <span style="color:#8a9aa6;font-size:12px;">
+                        {activity['date']} 업로드 완료
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    else:
+        st.caption("아직 업로드 활동이 없습니다.")
+
+    # ======================================
+    # 현재 RAG 연결 상태
+    # ======================================
+    st.markdown(
+        '<div class="upload-section-title">🤖 현재 RAG 연결 상태</div>',
+        unsafe_allow_html=True
+    )
+
+    if st.session_state.upload_chain:
+
+        st.success(
+            f"현재 활성 문서: {st.session_state.upload_name}"
+        )
+
+        st.caption(
+            "업로드한 문서를 기준으로 AI Learning Assistant에서 질문할 수 있습니다."
+        )
+
+    else:
+
+        st.info(
+            "현재 업로드 문서가 활성화되어 있지 않습니다. "
+            "문서를 업로드하고 처리해 주세요."
+        )
+
+    # 기존 챗봇과 연결하기 위한 반환값
+    return (
+        "파일 불러오기 화면. "
+        f"등록된 문서 수: {len(documents)}개. "
+        f"현재 업로드 문서: {st.session_state.upload_name or '없음'}"
+    )
+def page_ontology():
+
+    # --------------------------------------
+    # 1. 상단 제목
+    # --------------------------------------
+    st.markdown("""
+    <div style="display:flex; justify-content:space-between;
+                align-items:center; margin-bottom:5px;">
+        <div>
+            <div style="font-size:29px; font-weight:850; color:#19334d;">
+                🌸 온톨로지
+            </div>
+            <div style="font-size:14px; color:#8295a5;">
+                Ontology & Knowledge Graph
+            </div>
+        </div>
+        <div style="background:#16aaa9; color:white; padding:9px 18px;
+                    border-radius:25px; font-size:12px; font-weight:800;">
+            KNOWLEDGE GRAPH
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+    # --------------------------------------
+    # 2. 소개 배너
+    # --------------------------------------
+    st.markdown("""
+    <div style="
+        background:linear-gradient(110deg,#dff7f8,#e9f5ff);
+        border-radius:20px;
+        padding:22px 25px;
+        margin:15px 0;
+        min-height:110px;
+    ">
+        <div style="font-size:25px; font-weight:850; color:#19334d;">
+            AIVLE School 지식 구조를 한눈에!
+        </div>
+        <div style="font-size:15px; color:#536c83; line-height:1.8;
+                    margin-top:8px;">
+            교육과정, 직무, 프로젝트 등 주요 개념의 관계를<br>
+            온톨로지(지식 그래프)로 시각화하고 탐색할 수 있습니다.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+    # --------------------------------------
+    # 3. 온톨로지 데이터 불러오기
+    # --------------------------------------
+    raw = st.session_state.get("ontology_raw")
+
+    if os.path.exists(ONTOLOGY_FILE):
+        with open(ONTOLOGY_FILE, "r", encoding="utf-8") as f:
+            raw = f.read()
+
+    else:
+        uploaded_json = st.file_uploader(
+            "온톨로지 JSON 파일 업로드",
+            type=["json"],
+            key="ontology_json_upload"
+        )
+
+        if uploaded_json:
+            raw = uploaded_json.getvalue().decode("utf-8")
+            st.session_state.ontology_raw = raw
+
+    if not raw:
+        st.info(
+            "온톨로지 파일이 없습니다. "
+            "01번 노트북에서 생성한 aivle_ontology.json을 업로드해주세요."
+        )
+        return "온톨로지 화면. 데이터 파일 없음"
+
+
+    # 기존 데이터 처리 함수 활용
+    try:
+        edges = load_ontology_text(raw)
+    except (ValueError, KeyError, TypeError) as exc:
+        st.error(f"온톨로지 파일 형식을 확인해 주세요: {exc}")
+        return "온톨로지 파일 형식 오류"
+    if not edges:
+        st.info("표시할 관계가 없습니다.")
+        return "온톨로지 관계 없음"
+
+    entities = sorted(
+        {e["subject"] for e in edges}
+        | {e["object"] for e in edges}
+    )
+
+    relations = sorted({
+        e["relation"] for e in edges
+    })
+
+
+    # --------------------------------------
+    # 4. 상단 메뉴
+    # --------------------------------------
+    menu = st.radio(
+        "온톨로지 메뉴",
+        [
+            "📊 지식 그래프",
+            "📁 클래스(개념)",
+            "🔗 속성(Property)",
+            "📄 관계 미리보기",
+            "⚙️ 관리"
+        ],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="ontology_menu"
+    )
+
+    st.markdown("---")
+
+
+    # ======================================
+    # 메뉴 1. 지식 그래프
+    # ======================================
+    if menu == "📊 지식 그래프":
+
+        st.markdown("### 01. 지식 그래프 시각화")
+
+        col_graph, col_info = st.columns([2.5, 1])
+
+        with col_graph:
+
+            # 관심 개체 선택
+            st.multiselect(
+                "📌 관심 개체 고정",
+                entities,
+                key="pinned"
+            )
+
+            # 교육 / 취업 / 포트폴리오 구분
+            tabs = st.tabs([
+                "📚 교육",
+                "💼 취업",
+                "📁 포폴"
+            ])
+
+            shown_lines = []
+
+            for tab, name in zip(
+                tabs,
+                ["교육", "취업", "포폴"]
+            ):
+
+                with tab:
+
+                    tab_edges = [
+                        e for e in edges
+                        if edge_in_tab(e, name)
+                    ]
+
+                    focus = S["focus"]
+
+                    def score(e):
+                        text = (
+                            f'{e["subject"]} {e["object"]}'
+                        )
+
+                        pin = (
+                            2 if (
+                                e["subject"] in st.session_state.pinned
+                                or e["object"] in st.session_state.pinned
+                            ) else 0
+                        )
+
+                        return pin + sum(
+                            k in text for k in focus
+                        )
+
+                    tab_edges.sort(
+                        key=score,
+                        reverse=True
                     )
-                except Exception:
-                    st.warning("그래프를 표시할 수 없습니다. 아래 관계 목록을 확인해 주세요.")
-                    st.dataframe(
-                        [{"주체": s, "관계": p, "대상": o} for s, p, o in ONTOLOGY_TRIPLES],
-                        use_container_width=True,
-                        hide_index=True
+
+                    # 검색
+                    keyword = st.text_input(
+                        "관계 검색",
+                        placeholder="예: Python, 미니프로젝트",
+                        key=f"ontology_search_{name}"
                     )
 
-        with info_col:
-            with st.container(border=True):
-                st.markdown("#### 🧩 온톨로지 정보")
-                class_tab, property_tab = st.tabs(["클래스 (7)", "속성 (6)"])
-                with class_tab:
-                    for _, label, description in ONTOLOGY_CLASSES:
-                        st.markdown(f"🔹 **{label}**")
-                        st.caption(description)
-                with property_tab:
-                    for prop, description in ONTOLOGY_PROPERTIES:
-                        st.markdown(f"🔗 **{prop}**")
-                        st.caption(description)
+                    if keyword:
+                        tab_edges = [
+                            e for e in tab_edges
+                            if keyword.lower() in (
+                                f'{e["subject"]} '
+                                f'{e["object"]} '
+                                f'{e["relation"]} '
+                                f'{e["evidence"]}'
+                            ).lower()
+                        ]
 
-        lower_left, lower_right = st.columns([1.2, 0.9], gap="medium")
-        with lower_left:
-            section_title(2, "관계 데이터 미리보기")
+                    st.caption(
+                        f"총 관계 수: {len(tab_edges)}개"
+                    )
+
+                    top = tab_edges[:20]
+
+                    if top:
+
+                        # Graphviz 그래프 생성
+                        def safe_text(value):
+                            return (
+                                str(value)
+                                .replace("\\", "/")
+                                .replace('"', "'")
+                                .replace("\n", " ")[:40]
+                            )
+
+                        dot = [
+                            "digraph G {",
+                            "rankdir=LR;",
+                            'bgcolor="transparent";',
+                            'node [shape=box, style="rounded,filled", '
+                            'fillcolor="#e5f5f5", color="#43aebe", '
+                            'fontname="sans-serif", fontsize=11];',
+                            'edge [color="#83b3f5", '
+                            'fontname="sans-serif", fontsize=9];'
+                        ]
+
+                        for e in top:
+
+                            subject = safe_text(e["subject"])
+                            obj = safe_text(e["object"])
+                            relation = safe_text(e["relation"])
+
+                            dot.append(
+                                f'"{subject}" -> "{obj}" '
+                                f'[label="{relation}"];'
+                            )
+
+                        dot.append("}")
+
+                        st.graphviz_chart(
+                            "\n".join(dot),
+                            use_container_width=True
+                        )
+
+                        # 관계 데이터
+                        df = pd.DataFrame(top)[
+                            [
+                                "subject",
+                                "relation",
+                                "object",
+                                "evidence",
+                                "page"
+                            ]
+                        ]
+
+                        df.columns = [
+                            "개체",
+                            "관계",
+                            "대상",
+                            "근거 원문",
+                            "쪽"
+                        ]
+
+                        st.dataframe(
+                            df,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+
+                        # 챗봇 질문 연결
+                        pick = st.selectbox(
+                            "관계 선택",
+                            range(len(top)),
+                            key=f"ontology_pick_{name}",
+                            format_func=lambda i:
+                                f'{top[i]["subject"]} → '
+                                f'{top[i]["relation"]} → '
+                                f'{top[i]["object"]}'
+                        )
+
+                        if st.button(
+                            "💬 챗봇에게 자세히 질문하기",
+                            key=f"ontology_ask_{name}",
+                            use_container_width=True
+                        ):
+
+                            selected = top[pick]
+
+                            question = (
+                                f'"{selected["subject"]}"의 '
+                                f'"{selected["relation"]}" 관계와 '
+                                f'"{selected["object"]}"에 대해 '
+                                f'자세히 설명해주세요.'
+                            )
+
+                            ask(question)
+
+                        shown_lines += [
+                            f'[{name}] {e["subject"]} '
+                            f'-{e["relation"]}-> {e["object"]}'
+                            for e in top[:8]
+                        ]
+
+                    else:
+                        st.info("해당 조건에 맞는 관계가 없습니다.")
+
+
+        # ----------------------------------
+        # 온톨로지 정보
+        # ----------------------------------
+        with col_info:
+
+            st.markdown("### 02. 온톨로지 정보")
+
+            info_tab = st.tabs([
+                f"클래스 ({len(entities)})",
+                f"속성 ({len(relations)})"
+            ])
+
+            with info_tab[0]:
+
+                for entity in entities:
+
+                    with st.expander(f"🔷 {entity}"):
+
+                        related = [
+                            e for e in edges
+                            if (
+                                e["subject"] == entity
+                                or e["object"] == entity
+                            )
+                        ]
+
+                        st.caption(
+                            f"연결된 관계: {len(related)}개"
+                        )
+
+                        for e in related[:10]:
+
+                            st.write(
+                                f'{e["subject"]} '
+                                f'→ {e["relation"]} '
+                                f'→ {e["object"]}'
+                            )
+
+            with info_tab[1]:
+
+                for relation in relations:
+
+                    with st.expander(f"🔗 {relation}"):
+
+                        related = [
+                            e for e in edges
+                            if e["relation"] == relation
+                        ]
+
+                        st.caption(
+                            f"사용 횟수: {len(related)}개"
+                        )
+
+                        for e in related[:10]:
+
+                            st.write(
+                                f'{e["subject"]} → {e["object"]}'
+                            )
+
+
+    # ======================================
+    # 메뉴 2. 클래스(개념)
+    # ======================================
+    elif menu == "📁 클래스(개념)":
+
+        st.markdown("### 📁 클래스 및 개념 탐색")
+
+        st.caption(
+            "AIVLE School을 구성하는 주요 개념을 탐색합니다."
+        )
+
+        selected = st.selectbox(
+            "클래스 선택",
+            entities,
+            key="ontology_class_select"
+        )
+
+        related = [
+            e for e in edges
+            if (
+                e["subject"] == selected
+                or e["object"] == selected
+            )
+        ]
+
+        st.markdown(
+            f"#### 🔷 {selected}"
+        )
+
+        st.metric(
+            "연결된 관계 수",
+            len(related)
+        )
+
+        if related:
+
+            df = pd.DataFrame(related)[
+                ["subject", "relation", "object", "evidence"]
+            ]
+
+            df.columns = [
+                "개체",
+                "관계",
+                "대상",
+                "근거"
+            ]
+
             st.dataframe(
-                [{"주체": s, "관계": p, "대상": o} for s, p, o in ONTOLOGY_TRIPLES],
+                df,
                 use_container_width=True,
                 hide_index=True
             )
-        with lower_right:
-            section_title(3, "예시 질의")
-            examples = [
-                "DX 컨설턴트에게 필요한 핵심 역량은?",
-                "미니프로젝트 주제와 사용 기술은?",
-                "교육과정 간의 관계를 알려줘.",
-                "특정 프로젝트에 사용된 기술은?"
+
+
+    # ======================================
+    # 메뉴 3. 속성(Property)
+    # ======================================
+    elif menu == "🔗 속성(Property)":
+
+        st.markdown("### 🔗 관계 및 속성 탐색")
+
+        st.caption(
+            "개체 사이에 어떤 관계가 형성되어 있는지 확인합니다."
+        )
+
+        selected_relation = st.selectbox(
+            "관계 선택",
+            relations,
+            key="ontology_relation_select"
+        )
+
+        related = [
+            e for e in edges
+            if e["relation"] == selected_relation
+        ]
+
+        st.metric(
+            "해당 관계 수",
+            len(related)
+        )
+
+        if related:
+
+            df = pd.DataFrame(related)[
+                ["subject", "relation", "object", "evidence", "page"]
             ]
-            for i, example in enumerate(examples):
-                if st.button(f"🔎 {example}", key=f"onto_example_{i}", use_container_width=True):
-                    st.session_state.ontology_tab = "SPARQL 질의"
-                    st.session_state.ontology_query_text = (
-                        "SELECT ?project ?skill WHERE { ?project a ex:Project ; ex:useSkill ?skill . }"
-                        if i == 1 or i == 3 else
-                        "SELECT ?subject ?relation ?object WHERE { ?subject ?relation ?object . }"
-                    )
-                    st.rerun()
 
-    elif active_tab == "클래스(개념)":
-        section_title(1, "온톨로지 클래스")
-        st.markdown("AIVLE School의 주요 개념을 유형별로 정리했습니다.")
-        cols = st.columns(3, gap="medium")
-        for i, (class_id, label, description) in enumerate(ONTOLOGY_CLASSES):
-            with cols[i % 3]:
-                with st.container(border=True):
-                    st.markdown(f"### 🧊 {label}")
-                    st.caption(f"클래스 ID: `{class_id}`")
-                    st.write(description)
-                    related = [t for t in ONTOLOGY_TRIPLES if t[0] == label or t[2] == label]
-                    st.caption(f"연결된 관계 데이터: {len(related)}건")
+            df.columns = [
+                "시작 개체",
+                "관계",
+                "연결 개체",
+                "근거 원문",
+                "페이지"
+            ]
 
-    elif active_tab == "속성(Property)":
-        section_title(1, "관계 속성")
-        st.markdown("개념과 개념 사이의 연결 의미를 정의합니다.")
-        st.dataframe(
-            [{"속성": prop, "설명": description} for prop, description in ONTOLOGY_PROPERTIES],
-            use_container_width=True,
-            hide_index=True
-        )
-        section_title(2, "관계 트리플")
-        st.dataframe(
-            [{"주체(Subject)": s, "속성(Predicate)": p, "대상(Object)": o}
-             for s, p, o in ONTOLOGY_TRIPLES],
-            use_container_width=True,
-            hide_index=True
-        )
-
-    elif active_tab == "SPARQL 질의":
-        section_title(1, "SPARQL 질의로 지식 탐색하기")
-        default_query = st.session_state.get(
-            "ontology_query_text",
-            "SELECT ?project ?skill WHERE {\\n  ?project a ex:Project ; ex:useSkill ?skill .\\n}"
-        )
-        query = st.text_area(
-            "SPARQL 예시 질의",
-            value=default_query,
-            height=125,
-            key="ontology_query_editor"
-        )
-        run_col, help_col = st.columns([1, 3])
-        with run_col:
-            run_query = st.button("▶ 실행", type="primary", use_container_width=True)
-        with help_col:
-            st.caption("현재 데모는 AIVLE 샘플 지식 데이터에 대한 예시 질의를 제공합니다.")
-
-        if run_query:
-            st.session_state.ontology_query_result = run_ontology_sample_query(query)
-
-        if st.session_state.ontology_query_result is not None:
-            result = st.session_state.ontology_query_result
-            section_title(2, f"질의 결과 ({len(result)}건)")
-            st.dataframe(result, use_container_width=True, hide_index=True)
-
-        with st.expander("사용 가능한 예시 질의"):
-            st.code(
-                "SELECT ?project ?skill WHERE {\\n"
-                "  ?project a ex:Project ; ex:useSkill ?skill .\\n"
-                "}\\n\\n"
-                "# 교육과정 관계 조회 예시\\n"
-                "SELECT ?subject ?relation ?object WHERE {\\n"
-                "  ?subject ?relation ?object .\\n"
-                "}",
-                language="sparql"
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True
             )
 
-    elif active_tab == "관리":
-        section_title(1, "온톨로지 관리")
-        st.info("현재 화면은 예시 지식 그래프 데이터로 구성되어 있습니다. 실제 운영 데이터와 연결하기 전 개념 및 관계를 검토하는 관리 화면입니다.")
-        st.metric("클래스 수", len(ONTOLOGY_CLASSES))
-        st.metric("속성 수", len(ONTOLOGY_PROPERTIES))
-        st.metric("관계 데이터 수", len(ONTOLOGY_TRIPLES))
-        section_title(2, "등록된 개념")
-        st.dataframe(
-            [{"클래스 ID": cid, "개념": label, "설명": desc}
-             for cid, label, desc in ONTOLOGY_CLASSES],
-            use_container_width=True,
-            hide_index=True
-        )
-        section_title(3, "등록된 관계")
-        st.dataframe(
-            [{"주체": s, "관계": p, "대상": o} for s, p, o in ONTOLOGY_TRIPLES],
-            use_container_width=True,
-            hide_index=True
+
+    # ======================================
+    # 메뉴 4. SPARQL 질의
+    # ======================================
+    elif menu == "📄 관계 미리보기":
+
+        st.markdown("### 03. 관계 데이터 미리보기")
+
+        st.caption(
+            "온톨로지 관계를 질의하고 관련 데이터를 확인합니다."
         )
 
+        st.caption("현재 버전은 SPARQL 실행기가 아닌 관계 데이터 미리보기입니다.")
+        if st.button(
+            "▶ 관계 20개 보기",
+            use_container_width=True,
+            key="ontology_sparql_run"
+        ):
 
-# =========================================================
-# 15. 최종 화면 구성
-# =========================================================
+            # 현재 구현은 관계 데이터 기반 미리보기 검색
+            st.session_state.ontology_query_result = edges[:20]
+            st.session_state.ontology_query_executed = True
 
-if not st.session_state.profile_completed:
-    page_profile()
-else:
-    main_col, side_col = st.columns(
-        [3.2, 1.15],
-        gap="large"
+        if st.session_state.get(
+            "ontology_query_executed",
+            False
+        ):
+
+            result = st.session_state.get(
+                "ontology_query_result",
+                []
+            )
+
+            st.markdown(
+                f"#### 결과 ({len(result)}개)"
+            )
+
+            if result:
+
+                result_df = pd.DataFrame(result)[
+                    ["subject", "relation", "object"]
+                ]
+
+                result_df.columns = [
+                    "subject",
+                    "relation",
+                    "object"
+                ]
+
+                st.dataframe(
+                    result_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+
+    # ======================================
+    # 메뉴 5. 관리
+    # ======================================
+    elif menu == "⚙️ 관리":
+
+        st.markdown("### ⚙️ 온톨로지 관리")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                "전체 개체",
+                len(entities)
+            )
+
+        with col2:
+            st.metric(
+                "전체 관계",
+                len(edges)
+            )
+
+        with col3:
+            st.metric(
+                "관계 유형",
+                len(relations)
+            )
+
+        st.markdown("#### 📌 관심 개체 관리")
+
+        st.multiselect(
+            "항상 표시할 개체",
+            entities,
+            key="pinned"
+        )
+
+        st.button("🗑 관심 개체 초기화", on_click=lambda: st.session_state.update(pinned=[]))
+
+
+    # ======================================
+    # 하단 예시 질문
+    # ======================================
+    if menu == "📊 지식 그래프":
+
+        st.markdown("---")
+
+        st.markdown("### 04. 예시 질의")
+
+        col1, col2 = st.columns(2)
+
+        questions = [
+            "DX 컨설턴트에게 필요한 핵심 역량은?",
+            "미니프로젝트 주제와 사용 기술은?",
+            "교육과정 간의 관계를 알려줘.",
+            "특정 프로젝트에 사용된 기술은?",
+            "포트폴리오와 연관된 개념은?"
+        ]
+
+        for i, question in enumerate(questions):
+
+            target_col = col1 if i % 2 == 0 else col2
+
+            with target_col:
+
+                if st.button(
+                    f"🔍 {question}",
+                    key=f"ontology_example_{i}",
+                    use_container_width=True
+                ):
+
+                    ask(question)
+
+
+    return (
+        "온톨로지 화면. "
+        f"전체 개체 {len(entities)}개, "
+        f"전체 관계 {len(edges)}개. "
+        + "; ".join(shown_lines)
+        if menu == "📊 지식 그래프"
+        else (
+            "온톨로지 화면. "
+            f"전체 개체 {len(entities)}개, "
+            f"전체 관계 {len(edges)}개."
+        )
     )
+def page_archive():
+    st.markdown('<div class="page-title">💬 대화 기록</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-sub">지난 질문과 답변을 날짜별로 다시 볼 수 있어요</div>', unsafe_allow_html=True)
+    arc = st.session_state.archive
+    if not arc:
+        st.info("아직 저장된 대화가 없습니다.")
+        return "대화 기록 화면(기록 없음)"
+    dates = sorted({a["date"] for a in arc}, reverse=True)
+    d = st.selectbox("날짜 선택", dates)
+    kw = st.text_input("기록 검색", placeholder="질문이나 답변에 들어간 단어")
+    rows = [a for a in arc if a["date"] == d and (not kw or kw in a["question"] or kw in a["answer"])]
+    for a in reversed(rows):
+        with st.expander(f'🕒 {a["time"]} · {a["question"][:40]}'):
+            st.caption(f'{a["stage"]} · {a["page"]} · 기준: {a.get("source", "")}')
+            st.markdown(f'**Q.** {a["question"]}')
+            st.markdown(a["answer"])
+            st.button("🔁 다시 질문하기", key=f're_{a["id"]}', on_click=ask, args=(a["question"],))
+    c1, c2 = st.columns(2)
+    with c1:
+        csv = pd.DataFrame(arc).to_csv(index=False).encode("utf-8-sig")
+        st.download_button("⬇️ 전체 기록 CSV 다운로드", csv, "aivle_chat_log.csv", "text/csv", use_container_width=True)
+    with c2:
+        if st.button("🗑️ 이 날짜 기록 삭제", use_container_width=True):
+            st.session_state.archive = [a for a in arc if a["date"] != d]
+            save_archive()
+            st.rerun()
+    return f"대화 기록 화면. {d} 기록 {len(rows)}건"
 
-    with main_col:
-        menu = st.session_state.menu
 
-        if menu == "🏠 홈":
-            page_home()
-        elif menu == "👋 소개":
-            page_intro()
-        elif menu == "📚 교육과정":
-            page_education()
-        elif menu == "💼 취업과정":
-            page_career()
-        elif menu == "📁 포트폴리오":
-            page_portfolio()
-        elif menu == "📂 파일 불러오기":
-            page_file_upload()
-        elif menu == "🕸️ 온톨로지":
-            page_ontology()
-        elif menu == "🧠 학습 Q&A":
-            page_chat()
+# Shared page state. The user's calendar keys are retained unchanged.
+for key, value in {"profile":{"stage":"재학","name":"에이블러","track":"DX 컨설턴트"},
+    "checks":{}, "pinned":[], "archive":[], "upload_chain":None, "upload_name":None,
+    "answer_source":"AIVLE School 백서", "send_screen":False, "last_sources":[]}.items():
+    st.session_state.setdefault(key,value)
+profile = st.session_state.profile
+stage = profile["stage"]
+S = STAGES[stage]
+today = korea_today()
+profile_text = f"이름: {profile['name']}, 단계: {S['label']}, 트랙: {profile['track']}, 오늘: {today}. {S['rule']}"
+# Calendar's original events remain the authoritative source of dates.
+TEAM_EVENTS = [(date.fromisoformat(e['start']),date.fromisoformat(e['end']),e['title'],
+    '포폴' if '포트폴리오' in e['title'] else ('교육' if e['category']=='교육' else '취업'))
+    for e in EVENTS if not e.get('cert') and e.get('mode')!='daily']
+with st.sidebar:
+
+    # AIVLE 로고
+    st.html("""
+    <div class="logo-area">
+        <img
+            src="https://raw.githubusercontent.com/Jangrae/img/master/aivle.png"
+            width="145">
+        <p>AIVLE SCHOOL</p>
+    </div>
+    """)
+
+    # 실제 페이지 이동 버튼: 홈과 캘린더만 연결했습니다.
+    st.button('🏠 홈', key='nav_home', on_click=navigate, args=('home',),
+              type='primary' if st.session_state.active_page == 'home' else 'secondary',
+              use_container_width=True)
+    st.button('🗓️ 캘린더 · 할 일', key='nav_calendar', on_click=navigate, args=('calendar',),
+              type='primary' if st.session_state.active_page == 'calendar' else 'secondary',
+              use_container_width=True)
+    # 예은님 기능을 기존 사이드바 순서로 연결합니다.
+    for label, page in [
+        ("👋 소개", "intro"), ("📚 교육과정", "edu"), ("💼 취업과정", "job"),
+        ("🗂️ 포트폴리오", "portfolio"), ("📂 파일 불러오기", "upload"),
+        ("🧩 온톨로지", "ontology"), ("💬 대화 기록", "archive")]:
+        st.button(label, key=f"nav_{page}", on_click=navigate, args=(page,),
+                  type="primary" if st.session_state.active_page==page else "secondary",
+                  use_container_width=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 관리자
+    st.html("""
+    <p style="font-size:14px;font-weight:800;color:white;">
+        ⚙️ 관리자
+    </p>
+    """)
+
+    st.button("📤 문서 관리 열기", key="admin_documents", on_click=navigate,
+              args=("upload",), use_container_width=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 대화 삭제
+    if st.button(
+        "🗑️ 대화 삭제",
+        use_container_width=True
+    ):
+
+        st.session_state.messages = []
+        st.session_state.pending_prompt = None
+        st.rerun()
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    st.html("""
+    <p style="color:white;font-size:12px;">
+        AIVLE School<br>
+        Learning Assistant
+    </p>
+    """)
+
+
+# ==========================================
+# 6. 전체 화면 레이아웃
+# ==========================================
+left, right = st.columns(
+    [7, 3],
+    gap="large"
+)
+
+
+# ==========================================
+# 7. 중앙 대시보드
+# ==========================================
+submitted = False
+question = ""
+PAGE_FUNCS = {"intro":page_intro,"edu":page_edu,"job":page_job,"portfolio":page_portfolio,
+              "upload":page_upload,"ontology":page_ontology,"archive":page_archive}
+screen_text = "홈 화면"
+with left:
+    if st.session_state.active_page in PAGE_FUNCS:
+        screen_text = PAGE_FUNCS[st.session_state.active_page]() or st.session_state.active_page
+    elif st.session_state.active_page == 'calendar':
+        # ======================================
+        # 출결 및 일정 관리 달력
+        # ======================================
+        st.html("""
+        <div class="section-title">📅 출결 & 일정 관리</div>
+        <div class="calendar-caption">
+            백서 일정과 오늘의 할 일을 확인하세요. 출결 기록은 개인 메모이며 공식 출결과 연동되지 않습니다.
+        </div>
+        """)
+
+        # 백서 1.5.2: 10기 개강 2026-09-29. 출석일수가 아닌 달력 경과일입니다.
+        today = korea_today()
+        course_start = date(2026, 9, 29)
+        course_end = date(2027, 3, 5)
+        elapsed_day = (today - course_start).days + 1
+        if today < course_start:
+            hero_heading = f'교육 시작까지 <strong>{(course_start - today).days}일</strong> 남았어요.'
+        elif today > course_end:
+            hero_heading = '교육을 마친 여러분의 <strong>다음 도전</strong>을 응원해요.'
         else:
-            page_home()
+            hero_heading = f'오늘은 교육 <strong>{elapsed_day}일차</strong>입니다.'
+        cheers = [
+            '오늘 배운 것 하나, 내 것으로 만들어봐요.',
+            '막혔던 문제도 한 단계씩 풀어가면 돼요.',
+            '작은 실습 하나가 다음 프로젝트의 밑바탕이 됩니다.',
+            '오늘의 목표 하나부터 차근차근 시작해봐요.',
+            '어제보다 하나 더 이해하는 하루를 만들어봐요.',
+            '잠깐 쉬어가도 좋아요. 다시 시작할 힘을 채워봐요.',
+            '함께 묻고, 함께 풀면서 한 걸음 더 나아가요.',
+        ]
+        weekday = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'][today.weekday()]
+        st.html(f"""
+        <section class="today-card" aria-label="오늘의 학습 응원">
+          <div class="today-stamp">
+            <div class="today-month">{today.year} · {today.month:02d}</div>
+            <div class="today-number">{today.day:02d}</div>
+            <div class="today-weekday">{weekday}</div>
+          </div>
+          <div>
+            <div class="today-eyebrow">AIVLE SCHOOL · 오늘의 한 걸음</div>
+            <h2 class="today-heading">{hero_heading}</h2>
+            <p class="today-cheer">{cheers[today.toordinal() % len(cheers)]}</p>
+            <div class="today-basis">한국시간 기준 · 2026.09.29 개강 · 일차는 주말·공휴일을 포함한 경과일</div>
+          </div>
+        </section>
+        """)
+        with st.container(key="calendar_panel"):
+            # 월 이동 및 월 표시
+            month_prev, month_title, month_next = st.columns([1, 5, 1])
 
-    with side_col:
-        right_panel()
+            with month_prev:
+                if st.button("‹", key="calendar_prev_month", use_container_width=True):
+                    current_month = st.session_state.calendar_month
+                    if current_month.month == 1:
+                        st.session_state.calendar_month = date(current_month.year - 1, 12, 1)
+                    else:
+                        st.session_state.calendar_month = date(current_month.year, current_month.month - 1, 1)
+                    st.rerun()
+
+            with month_title:
+                st.markdown(
+                    f"<h3 style='text-align:center;color:#19334d;margin:4px 0 15px 0;'>"
+                    f"{st.session_state.calendar_month.year}년 {st.session_state.calendar_month.month}월"
+                    f"</h3>",
+                    unsafe_allow_html=True
+                )
+
+            with month_next:
+                if st.button("›", key="calendar_next_month", use_container_width=True):
+                    current_month = st.session_state.calendar_month
+                    if current_month.month == 12:
+                        st.session_state.calendar_month = date(current_month.year + 1, 1, 1)
+                    else:
+                        st.session_state.calendar_month = date(current_month.year, current_month.month + 1, 1)
+                    st.rerun()
+
+            # 요일 헤더
+            weekday_cols = st.columns(7)
+            weekdays = ["일", "월", "화", "수", "목", "금", "토"]
+            for col, weekday in zip(weekday_cols, weekdays):
+                with col:
+                    st.markdown(f"<div class='calendar-weekday'>{weekday}</div>", unsafe_allow_html=True)
+
+            # 달력 날짜 버튼
+            month_matrix = pycalendar.Calendar(firstweekday=6).monthdayscalendar(
+                st.session_state.calendar_month.year,
+                st.session_state.calendar_month.month
+            )
+
+            for week_index, week in enumerate(month_matrix):
+                day_cols = st.columns(7)
+                for col_index, day_num in enumerate(week):
+                    with day_cols[col_index]:
+                        if day_num == 0:
+                            st.write("")
+                        else:
+                            this_day = date(
+                                st.session_state.calendar_month.year,
+                                st.session_state.calendar_month.month,
+                                day_num
+                            )
+                            day_events = [e for e in events_on(this_day)
+                                          if not e.get('cert') and (e.get('mode') != 'info' or this_day.isoformat() in (e['start'], e['end']))]
+                            attendance = st.session_state.attendance_records.get(this_day.isoformat(), {})
+                            marker_parts = []
+                            if day_events:
+                                marker_parts.append("📌")
+                            if attendance:
+                                marker_parts.append("✓")
+                            if this_day == korea_today():
+                                marker_parts.append("오늘")
+                            marker = " ".join(marker_parts)
+                            is_selected = this_day == st.session_state.selected_calendar_date
+                            label = f"{day_num}\n{marker}" if marker else str(day_num)
+                            if st.button(
+                                label,
+                                key=f"calendar_day_{this_day.isoformat()}",
+                                type="primary" if is_selected else "secondary",
+                                use_container_width=True
+                            ):
+                                st.session_state.selected_calendar_date = this_day
+                                st.rerun()
+
+            st.markdown(
+                "<div class='calendar-legend'>📌 교육·개인 일정 있음　 ✓ 출결 기록 있음　 날짜를 누르면 상세 내용을 확인할 수 있습니다.</div>",
+                unsafe_allow_html=True
+            )
+
+            st.divider()
+            selected_day = st.session_state.selected_calendar_date
+            st.markdown(
+                f"<div class='calendar-subtitle'>🗓️ {selected_day.strftime('%Y년 %m월 %d일')} 상세 관리</div>",
+                unsafe_allow_html=True
+            )
+
+            # 날짜별 할 일: 화면 전환으로 위젯이 사라져도 완료 사전은 유지됩니다.
+            tasks = [e for e in events_on(selected_day)
+                     if not e.get('cert') and e.get('mode') not in ('info', 'window')]
+            title = '오늘의 할 일' if selected_day == korea_today() else f'{selected_day:%m월 %d일} 할 일'
+            st.subheader(title)
+            if tasks:
+                count = sum(bool(st.session_state.calendar_done.get(task_key(e, selected_day))) for e in tasks)
+                st.progress(count / len(tasks), text=f'{len(tasks)}개 중 {count}개 완료')
+                for item in tasks:
+                    tid = task_key(item, selected_day)
+                    wk = 'todo_' + tid
+                    st.session_state[wk] = st.session_state.calendar_done.get(tid, False)
+                    st.checkbox(item['title'], key=wk, on_change=update_done, args=(tid, wk))
+            else:
+                st.info('선택한 날짜에 등록된 할 일이 없습니다.')
+            st.caption('기간 신청은 한 번 완료, 여러 날의 교육·프로젝트는 날짜별 완료로 관리합니다.')
+            st.divider()
+            st.subheader('가장 가까운 자격증 시험')
+            st.multiselect('표시할 자격증', CERT_NAMES,
+                           default=st.session_state.cert_preferences, key='cert_filter',
+                           on_change=remember_cert_filter)
+            cert_notices = nearest_cert_exams(selected_day)
+            st.caption(f'{selected_day:%Y년 %m월 %d일} 기준 · 자격증별 가장 가까운 시험')
+            if cert_notices:
+                cards = []
+                for item, registrations in cert_notices:
+                    exam_dates = item['start'] + (' ~ ' + item['end'] if item['start'] != item['end'] else '')
+                    periods = []
+                    for registration in registrations:
+                        period = registration['start']
+                        if registration['start'] != registration['end']:
+                            period += ' ~ ' + registration['end']
+                        if registration['stage'] == '접수 마감':
+                            period += ' 마감'
+                        if period not in periods:
+                            periods.append(period)
+                    registration_dates = ' / '.join(periods) if periods else '별도 공지'
+                    url, label, _ = registration_destination(item['cert'])
+                    cards.append(f"""
+                    <article class="cert-exam-card">
+                      <div class="cert-card-badge">{html.escape(item['attempt'])} · {html.escape(item['stage'])}</div>
+                      <h3>{html.escape(item['cert'])}</h3>
+                      <dl>
+                        <dt>시험일</dt><dd>{html.escape(exam_dates)}</dd>
+                        <dt>접수 기간</dt><dd>{html.escape(registration_dates)}</dd>
+                      </dl>
+                      <a class="cert-apply-link" href="{html.escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">{html.escape(label)} ↗</a>
+                    </article>
+                    """)
+                st.html('<div class="cert-exam-grid">' + ''.join(cards) + '</div>')
+            else:
+                st.caption('선택한 자격증에 대해 기준일 이후 확인된 시험 일정이 없습니다.')
+            st.divider()
+
+
+            attendance_col, schedule_col = st.columns(2, gap="medium")
+
+            # 출결 관리
+            with attendance_col:
+                st.markdown("<div class='calendar-subtitle'>✅ 출결 기록</div>", unsafe_allow_html=True)
+                saved_attendance = st.session_state.attendance_records.get(selected_day.isoformat(), {})
+                with st.form("attendance_form_" + selected_day.isoformat(), clear_on_submit=False):
+                    attendance_status = st.selectbox(
+                        "출결 상태",
+                        # 날짜별 위젯 상태
+                        ["미기록", "출석", "지각", "결석", "공결"],
+                        key="attendance_status_" + selected_day.isoformat(), index=["미기록", "출석", "지각", "결석", "공결"].index(saved_attendance.get("status", "미기록"))
+                    )
+                    attendance_memo = st.text_input(
+                        "메모",
+                        key="attendance_memo_" + selected_day.isoformat(),
+                        value=saved_attendance.get("memo", ""),
+                        placeholder="출결 관련 메모를 입력하세요."
+                    )
+                    save_attendance = st.form_submit_button("출결 저장", use_container_width=True)
+
+                if save_attendance:
+                    if attendance_status == "미기록":
+                        st.session_state.attendance_records.pop(selected_day.isoformat(), None)
+                    else:
+                        st.session_state.attendance_records[selected_day.isoformat()] = {
+                            "status": attendance_status,
+                            "memo": attendance_memo
+                        }
+                    st.success("출결 정보가 저장되었습니다.")
+                    st.rerun()
+
+                if saved_attendance:
+                    st.caption(
+                        f"현재 기록: {saved_attendance.get('status', '')}"
+                        + (f" · {saved_attendance.get('memo')}" if saved_attendance.get("memo") else "")
+                    )
+
+            # 일정 등록 및 조회
+            with schedule_col:
+                st.markdown("<div class='calendar-subtitle'>📝 일정 등록</div>", unsafe_allow_html=True)
+                with st.form("schedule_form_" + selected_day.isoformat(), clear_on_submit=True):
+                    event_title = st.text_input("일정 이름", key="title_" + selected_day.isoformat(), placeholder="예: 데이터 분석 강의")
+                    event_type = st.selectbox("일정 유형", ["교육", "과제", "시험", "프로젝트", "개인", "기타"])
+                    event_start = st.date_input("시작일", value=selected_day, key="start_" + selected_day.isoformat())
+                    event_end = st.date_input("종료일", value=selected_day, key="end_" + selected_day.isoformat())
+                    event_memo = st.text_input("상세 내용", placeholder="장소 또는 준비 사항")
+                    save_event = st.form_submit_button("일정 추가", use_container_width=True)
+
+                if save_event:
+                    if not event_title.strip():
+                        st.warning("일정 이름을 입력해 주세요.")
+                    elif event_end < event_start:
+                        st.warning("종료일은 시작일보다 빠를 수 없습니다.")
+                    else:
+                        st.session_state.calendar_events.append({
+                            "id": str(uuid.uuid4()),
+                            "title": event_title.strip(),
+                            "type": event_type,
+                            "start": event_start.isoformat(),
+                            "end": event_end.isoformat(),
+                            "mode": "once",
+                            "official": False,
+                            "memo": event_memo.strip()
+                        })
+                        st.success("일정이 추가되었습니다.")
+                        st.rerun()
+
+            # 선택 날짜 일정 목록 및 삭제
+            selected_events = [e for e in events_on(selected_day) if not e.get('cert')]
+            if selected_events:
+                st.markdown("**등록된 일정**")
+                for event in selected_events:
+                    event_col, delete_col = st.columns([8, 1])
+                    with event_col:
+                        date_range = event["start"] if event["start"] == event["end"] else f"{event['start']} ~ {event['end']}"
+                        st.markdown(
+                            f"📌 **{html.escape(event['title'])}**　`{html.escape(event['type'])}`<br>"
+                            f"<span style='color:#8b9aa6;font-size:12px;'>{date_range}"
+                            f"{' · ' + html.escape(event['memo']) if event['memo'] else ''}</span>",
+                            unsafe_allow_html=True
+                        )
+                        if event.get('official'):
+                            st.caption('출처: ' + event.get('source', '백서') + ' · 시간: ' + event.get('period', '시간 미정'))
+                        if event.get('source_url'):
+                            st.markdown(f"[일정 출처 열기]({event['source_url']})")
+                        if event.get('mode') == 'window':
+                            st.caption('시험 시행기간 안내 · 실제 응시일은 수험표 기준입니다. 확정한 개인 시험일은 개인 일정으로 등록하세요.')
+                        if event.get('mode') == 'info':
+                            st.caption('이용 가능 기간 안내 · 매일 완료할 의무가 있는 일정이 아닙니다.')
+                    with delete_col:
+                        if not event.get('official') and st.button("🗑️", key=f"delete_event_{event['id']}"):
+                            st.session_state.calendar_events = [
+                                item for item in st.session_state.calendar_events
+                                if item["id"] != event["id"]
+                            ]
+                            st.rerun()
+            else:
+                st.caption("선택한 날짜에 등록된 일정이 없습니다.")
+
+        selected = st.session_state.selected_calendar_date
+        screen_text = "캘린더 선택일: " + str(selected) + ". 일정: " + "; ".join(
+            f"{e['title']} ({e['start']}~{e['end']})" for e in events_on(selected))
+    else:
+
+        # 인사말 및 검색창
+        title_col, search_col = st.columns(
+            [5, 4]
+        )
+
+        with title_col:
+
+            st.html("""
+            <div class="greeting">
+                Hello, AIVLE! 👋
+            </div>
+            <div class="sub-greeting">
+                오늘도 새로운 지식을 함께 배워봐요.
+            </div>
+            """)
+
+        with search_col:
+
+            st.text_input(
+                "검색",
+                placeholder="궁금한 내용을 검색해 보세요.",
+                label_visibility="collapsed",
+                key="search_input",
+                on_change=submit_search
+            )
+
+        # ======================================
+        # 환영 카드
+        # ======================================
+        card1, card2 = st.columns(2)
+
+        with card1:
+
+            st.html("""
+            <div class="dashboard-card welcome-card">
+                <h3>Welcome back! ✨</h3>
+                <p>
+                    AIVLE School 학습 도우미입니다.<br>
+                    교육 과정, 강의 내용, 미니프로젝트 등<br>
+                    궁금한 내용을 자유롭게 질문해 보세요!
+                </p>
+                <div style="font-size:27px;text-align:right;">
+                    📘 🤖
+                </div>
+            </div>
+            """)
+
+        with card2:
+
+            st.html("""
+            <div class="dashboard-card result-card">
+                <h3>Learning Guide 📊</h3>
+                <p>
+                    여러분의 학습을 도와드릴게요.<br>
+                    문서 기반 RAG 시스템을 활용하여<br>
+                    필요한 정보를 빠르게 찾아보세요.
+                </p>
+                <div style="font-size:27px;text-align:right;">
+                    💡 📚
+                </div>
+            </div>
+            """)
+
+        # ======================================
+        # 주요 기능 카드
+        # ======================================
+        st.html("""
+        <div class="section-title">
+            Quick Menu
+        </div>
+        """)
+
+        f1, f2, f3 = st.columns(3)
+
+        with f1:
+
+            st.html("""
+            <div class="feature-card">
+                <div class="feature-icon">📚</div>
+                <div class="feature-title">학습 자료</div>
+                <div class="feature-desc">
+                    교육 문서 기반 질문
+                </div>
+            </div>
+            """)
+
+        with f2:
+
+            st.html("""
+            <div class="feature-card">
+                <div class="feature-icon">🧠</div>
+                <div class="feature-title">학습 Q&A</div>
+                <div class="feature-desc">
+                    AI 문서 검색 및 답변
+                </div>
+            </div>
+            """)
+
+        with f3:
+
+            st.html("""
+            <div class="feature-card">
+                <div class="feature-icon">🚀</div>
+                <div class="feature-title">미니프로젝트</div>
+                <div class="feature-desc">
+                    프로젝트 정보 확인
+                </div>
+            </div>
+            """)
+
+        quick_cols = st.columns(3)
+        for col,label,target in zip(quick_cols,["교육과정 열기","학습 Q&A","포트폴리오 열기"],["edu","intro","portfolio"]):
+            with col:
+                st.button(label,key="quick_"+target,on_click=navigate,args=(target,),use_container_width=True)
+
+# ==========================================
+# 8. 오른쪽 프로필 및 추천 질문
+# ==========================================
+with right:
+    st.html(f"""<div class="profile-card"><div class="profile-icon">{S['emoji']}</div>
+    <div class="profile-name">{html.escape(profile['name'])}</div>
+    <div class="profile-desc">{S['label']} · {html.escape(profile['track'])}</div></div>""")
+    with st.expander("✏️ 프로필 설정"):
+        with st.form("profile_form"):
+            name = st.text_input("이름(닉네임)",value=profile['name'])
+            stage_choice = st.selectbox("나의 단계",list(STAGES),index=list(STAGES).index(stage),format_func=lambda k:STAGES[k]['label'])
+            tracks = ["DX 컨설턴트","AI 개발자"]
+            track = st.selectbox("트랙",tracks,index=tracks.index(profile['track']))
+            if st.form_submit_button("프로필 저장"):
+                st.session_state.profile={"name":name.strip() or "에이블러","stage":stage_choice,"track":track}
+                st.rerun()
+    if st.session_state.active_page == 'calendar':
+        with st.container(key='upcoming_panel'):
+            st.subheader('🔔 다가오는 일정')
+            horizon = st.selectbox('미리 보기', [3, 7, 14, 30], index=1, format_func=lambda n: f'{n}일 이내')
+            reminders = []
+            for item in visible_events():
+                if item.get('cert') or item.get('mode', 'once') != 'once' or st.session_state.calendar_done.get(task_key(item, korea_today())):
+                    continue
+                remaining = (date.fromisoformat(item['end']) - korea_today()).days
+                if -7 <= remaining <= horizon:
+                    reminders.append((item['end'], remaining, item))
+            for _, remaining, item in sorted(reminders, key=lambda r: (r[0], r[2]['id'])):
+                badge = f'{-remaining}일 지남' if remaining < 0 else ('오늘' if remaining == 0 else f'D-{remaining}')
+                with st.container(border=True):
+                    st.write(f"**{badge} · {item['title']}**")
+                    st.caption(item['end'])
+            if not reminders:
+                st.caption('해당 기간에 미완료 마감·행사 일정이 없습니다.')
+            st.caption('최근 7일 미완료 일정 포함 · 앱 안에서 확인하는 알림입니다.')
+
+    with st.container(key="chat_panel"):
+        st.markdown("### 🤖 AIVLE 학습 도우미")
+        st.caption("대화·작성 문서·완료 표시는 현재 접속 세션에 보관됩니다.")
+        documents=st.session_state.get("uploaded_documents",[])
+        if documents:
+            if st.session_state.get("active_document", 0) >= len(documents):
+                st.session_state.active_document = 0
+            selected_doc=st.selectbox("등록 문서 선택",range(len(documents)),
+                format_func=lambda i:documents[i]['name'],key="active_document")
+            if st.button("선택 문서로 질문",key="activate_document"):
+                doc=documents[selected_doc]
+                st.session_state.upload_chain=doc['chain']
+                st.session_state.upload_name=doc['name']
+                st.session_state.answer_source="업로드 문서"
+        sources=["AIVLE School 백서"]+(["업로드 문서"] if st.session_state.upload_chain else [])
+        if st.session_state.answer_source not in sources:
+            st.session_state.answer_source=sources[0]
+        st.radio("답변 기준",sources,key="answer_source",horizontal=True)
+        st.toggle("현재 화면 내용 함께 보내기",key="send_screen")
+        for msg in st.session_state.messages[-8:]:
+            with st.chat_message(msg['role']): st.markdown(msg['content'])
+        if st.session_state.last_sources:
+            with st.expander("📄 직전 답변의 근거 문서"):
+                for src in st.session_state.last_sources: st.write(src)
+        with st.form("chat_form",clear_on_submit=True):
+            question=st.text_input("질문",placeholder="궁금한 내용을 질문하세요.")
+            submitted=st.form_submit_button("질문 보내기 ➤",use_container_width=True)
+        question_text = question.strip() if submitted else st.session_state.pending_prompt
+        if question_text:
+            st.session_state.pending_prompt=None
+            try:
+                with st.spinner("문서에서 답변을 찾고 있습니다..."):
+                    ensure_rag_imports()
+                    from langchain_core.messages import HumanMessage, AIMessage
+                    history=[HumanMessage(content=m['content']) if m['role']=='user' else AIMessage(content=m['content'])
+                             for m in st.session_state.messages[-6:]]
+                    with st.chat_message("assistant"):
+                        if st.session_state.answer_source=="업로드 문서":
+                            rewritten=rewrite_question(question_text,history)
+                            answer=st.write_stream(st.session_state.upload_chain.stream({"input":rewritten}))
+                            st.session_state.last_sources=[st.session_state.upload_name]
+                        else:
+                            stream,docs,search_query=answer_stream(question_text,history,profile_text,
+                                screen_text if st.session_state.send_screen else "")
+                            answer=st.write_stream(stream)
+                            st.session_state.last_sources=[f"쪽 {d.metadata.get('page','?')}: {d.page_content[:200]}" for d in docs]
+                st.session_state.messages.extend([{'role':'user','content':question_text},{'role':'assistant','content':answer}])
+                now=datetime.now(ZoneInfo('Asia/Seoul'))
+                st.session_state.archive.append({'id':uuid.uuid4().hex,'date':now.strftime('%Y-%m-%d'),
+                    'time':now.strftime('%H:%M'),'stage':S['label'],'page':st.session_state.active_page,
+                    'source':st.session_state.answer_source,'question':question_text,'answer':answer})
+                st.rerun()
+            except Exception as exc:
+                st.error(f"답변을 생성하지 못했습니다: {exc}")
+    st.markdown("### 💡 추천 질문")
+    for i,q in enumerate(S['questions']):
+        st.button(q,key=f"recommend_{i}",on_click=ask,args=(q,),use_container_width=True)
